@@ -1,12 +1,13 @@
 import { connectDB } from "../db/connect";
 import { Transaction, oid } from "../db/models";
 import { addDays, monthOf, monthStart, todayISO } from "../dates";
-import { getLookups } from "./lookups";
-import { getBalanceSummary, getMonthlySeries, getPeriodReport } from "./finance";
+import { expenseLines, getBalanceSummary, getMonthlySeries, getPeriodReport } from "./finance";
 import { currentCycle, getFundingSources, getSalaryCycles } from "./salary";
 import { getUpcomingBills } from "./bills";
 import { listGoals } from "./savings";
 import { listTransactions, toTxnDTO } from "./transactions";
+import { getPersonDetail, listPeople } from "./people";
+import { categoryMap, getLookups, type Lookups } from "./lookups";
 
 /**
  * Everything the dashboard shows, computed from database records in one pass.
@@ -22,7 +23,7 @@ export async function getDashboard(userId: string) {
   const month = monthOf(today);
 
   const lookups = await getLookups(userId);
-  const [balance, mtd, cycles, sources, series, upcoming, recent, pendingDocs, goals] = await Promise.all([
+  const [balance, mtd, cycles, sources, series, upcoming, recent, pendingDocs, goals, invested, borrowed] = await Promise.all([
     getBalanceSummary(userId, today),
     getPeriodReport(userId, monthStart(month), today, {}, lookups),
     getSalaryCycles(userId),
@@ -32,6 +33,8 @@ export async function getDashboard(userId: string) {
     listTransactions(userId, { pageSize: 8 }, lookups),
     Transaction.find({ userId: oid(userId), status: "pending" }).sort({ date: 1 }).limit(8).lean(),
     listGoals(userId, today),
+    getInvestedTotal(userId, lookups),
+    getBorrowedOverview(userId),
   ]);
 
   // Salary overview from the FIFO funding ledger.
@@ -62,12 +65,14 @@ export async function getDashboard(userId: string) {
       incomeThisMonth: mtd.totalIncome + mtd.broughtIn,
       spentThisMonth: mtd.expenses,
       savedThisMonth: mtd.savingsAndTransfers,
-      currentMonthSalary: mtd.salary,
-      totalSavings: balance.savings,
+      /** Set aside outside spendable money: savings-goal funds + money invested (all time). */
+      inSavings: balance.savings + invested,
+      savingsGoals: balance.savings,
+      invested,
       pendingTotal: balance.pendingTotal,
       pendingCount: balance.pendingCount,
-      todaySpent: dailyMap.get(today) ?? 0,
     },
+    borrowed,
     salary: {
       cycle,
       currentSalary,
@@ -89,3 +94,40 @@ export async function getDashboard(userId: string) {
 }
 
 export type DashboardData = Awaited<ReturnType<typeof getDashboard>>;
+
+/** All-time paid spending in "Investment / saving" categories (e.g. Alwin Investment). */
+async function getInvestedTotal(userId: string, lookups: Lookups): Promise<number> {
+  const cats = categoryMap(lookups);
+  const savingIds = lookups.categories.filter((c) => c.nature === "saving").map((c) => oid(c.id));
+  if (savingIds.length === 0) return 0;
+  const docs = await Transaction.find(
+    { userId: oid(userId), type: "expense", status: "paid", $or: [{ categoryId: { $in: savingIds } }, { "items.categoryId": { $in: savingIds } }] },
+    { amount: 1, categoryId: 1, items: 1 },
+  ).lean();
+  let total = 0;
+  for (const t of docs) {
+    for (const line of expenseLines(t)) {
+      if (line.categoryId && cats.get(line.categoryId)?.nature === "saving") total += line.amount;
+    }
+  }
+  return total;
+}
+
+/**
+ * Money owed to family, reusing Family & Allocations: what was agreed (allocated), what has
+ * been paid back (payments linked to the person), and what is still outstanding.
+ */
+async function getBorrowedOverview(userId: string) {
+  const people = (await listPeople(userId)).filter((p) => p.totalAllocated > 0);
+  const details = await Promise.all(people.map((p) => getPersonDetail(userId, p.id)));
+  const byPerson = people.map((p, i) => {
+    const open = (details[i]?.allocations ?? [])
+      .filter((a) => a.remaining > 0)
+      .sort((a, b) => a.month.localeCompare(b.month))
+      .map((a) => ({ month: a.month, remaining: a.remaining, note: a.note }));
+    return { id: p.id, name: p.name, borrowed: p.totalAllocated, repaid: p.totalPaid, remaining: Math.max(0, p.totalAllocated - p.totalPaid), open };
+  });
+  const total = byPerson.reduce((s, p) => s + p.borrowed, 0);
+  const repaid = byPerson.reduce((s, p) => s + Math.min(p.repaid, p.borrowed), 0);
+  return { total, repaid, remaining: total - repaid, byPerson };
+}

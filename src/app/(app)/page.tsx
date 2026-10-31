@@ -1,15 +1,16 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import { CalendarClock, Wallet } from "lucide-react";
+import { CalendarClock, ChevronRight, Wallet } from "lucide-react";
 import { ButtonLink } from "@/components/button-link";
-import { CardsSkeleton, EmptyState, Meter, PageHeader, Section, StatCard, TableSkeleton } from "@/components/common";
+import { CardsSkeleton, EmptyState, Meter, PageHeader, Section, TableSkeleton } from "@/components/common";
 import { Money } from "@/components/money";
 import { TxnList } from "@/components/txn-list";
 import { HelpButton } from "@/components/help";
 import { CategoryBarChart, DailySpendChart, IncomeExpenseChart } from "@/components/charts";
 import { requireUser } from "@/lib/auth/session";
-import { getDashboard } from "@/lib/services/dashboard";
-import { addMonths, formatDate, formatMonthLong } from "@/lib/dates";
+import { getDashboard, type DashboardData } from "@/lib/services/dashboard";
+import { cn } from "@/lib/utils";
+import { addMonths, formatDate, formatMonth, formatMonthLong } from "@/lib/dates";
 import { formatTaka, percent } from "@/lib/money";
 
 export default function DashboardPage() {
@@ -43,44 +44,65 @@ async function Dashboard() {
   const user = await requireUser();
   const d = await getDashboard(user.id);
   const m = d.metrics;
+  const prevMonth = addMonths(d.month, -1);
   const s = d.salary;
 
   return (
     <div className="space-y-5">
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.4fr_1fr]">
-        <div className="rounded-xl border bg-card p-5">
-          <div className="flex items-center gap-1">
-            <p className="text-sm font-medium text-muted-foreground">Available money now</p>
-            <HelpButton topic="balanceCard" className="size-5" />
-          </div>
-          <p className="mt-1 text-4xl font-semibold tracking-tight">
-            <Money value={m.availableNow} tone="auto" />
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">What you can spend today — your salaries&apos; unspent money after every paid expense.</p>
-          <dl className="mt-4 grid gap-1.5 text-sm" aria-label="How available money is calculated">
-            <Row label={`Left over from ${formatMonthLong(addMonths(d.month, -1))}`} value={m.carriedForward} />
-            <Row label="+ Income this month" value={m.incomeThisMonth} tone="income" />
-            <Row label="− Spent this month" value={m.spentThisMonth} />
-            {m.savedThisMonth !== 0 && <Row label="− Saved & invested this month" value={m.savedThisMonth} />}
-            <div className="flex justify-between gap-3 border-t pt-1.5 font-semibold">
-              <dt>= Available now</dt>
-              <dd>
-                <Money value={m.availableNow} tone="auto" />
-              </dd>
-            </div>
-          </dl>
+      <section aria-labelledby="overview-title">
+        <div className="mb-3 flex items-center gap-1">
+          <h2 id="overview-title" className="text-sm font-semibold">
+            At a glance · {formatMonthLong(d.month)}
+          </h2>
+          <HelpButton topic="balanceCard" className="size-5" />
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <StatCard label="This month's salary" value={<Money value={m.currentMonthSalary} />} />
-          <StatCard label="Spent today" value={<Money value={m.todaySpent} />} />
-          <StatCard label="In savings goals" value={<Money value={m.totalSavings} />} hint="Set aside — not counted as available" />
-          <StatCard
-            label="Pending payments"
-            value={<Money value={m.pendingTotal} />}
-            hint={m.pendingCount ? `${m.pendingCount} not paid yet — not deducted` : "Nothing pending"}
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+          <OverviewCard
+            highlight
+            className="col-span-2 lg:order-3 lg:col-span-1"
+            href={`/reports?month=${d.month}`}
+            label="Available total balance"
+            value={m.availableNow}
+            hint={[
+              `${formatTaka(m.carriedForward)} carried forward`,
+              `+ ${formatTaka(m.incomeThisMonth)} income`,
+              `− ${formatTaka(m.spentThisMonth)} spent`,
+              m.savedThisMonth ? `− ${formatTaka(m.savedThisMonth)} saved & invested` : null,
+            ]
+              .filter(Boolean)
+              .join(" ")}
           />
+          <OverviewCard
+            className="lg:order-1"
+            href={`/reports?month=${prevMonth}`}
+            label="Previous month carryforward"
+            value={m.carriedForward}
+            hint={`Left at the end of ${formatMonthLong(prevMonth)}`}
+          />
+          <OverviewCard
+            className="lg:order-2"
+            href={`/transactions?type=expense&from=${d.month}-01`}
+            label="This month's spends"
+            value={m.spentThisMonth}
+            hint={m.savedThisMonth ? `Plus ${formatTaka(m.savedThisMonth)} saved & invested` : "Paid expenses so far this month"}
+          />
+          <OverviewCard
+            className="lg:order-4"
+            href="/savings"
+            label="In savings"
+            value={m.inSavings}
+            hint={`Savings goals ${formatTaka(m.savingsGoals)} · Invested ${formatTaka(m.invested)}`}
+          />
+          <OverviewCard
+            className="lg:order-5"
+            href="/transactions?status=pending"
+            label="Pending payments"
+            value={m.pendingTotal}
+            hint={m.pendingCount ? `${m.pendingCount} not paid yet — not deducted` : "Nothing waiting to be paid"}
+          />
+          <BorrowedCard borrowed={d.borrowed} className="col-span-2 lg:order-6 lg:col-span-1" />
         </div>
-      </div>
+      </section>
 
       <Section
         title="Salary carry-forward"
@@ -107,7 +129,7 @@ async function Dashboard() {
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
               <Metric label="Previous salary savings" value={s.previousSavings} />
               <Metric label="Current salary received" value={s.currentSalary?.amount ?? 0} />
-              <Metric label="Available across all salaries" value={s.totalAvailableFunds} hint="Same as Available money now" />
+              <Metric label="Available across all salaries" value={s.totalAvailableFunds} hint="Same as Available total balance" />
               <Metric label="Spent this salary cycle" value={s.spentThisCycle} />
               <Metric label="Current salary remaining" value={s.currentSalaryRemaining} />
               <Metric label="Total accumulated savings" value={s.totalAccumulated} hint="Unspent older salaries + savings goals" />
@@ -229,14 +251,84 @@ async function Dashboard() {
   );
 }
 
-function Row({ label, value, tone }: { label: string; value: number; tone?: "income" }) {
+function OverviewCard({
+  label,
+  value,
+  hint,
+  href,
+  highlight = false,
+  className,
+}: {
+  label: string;
+  value: number;
+  hint: string;
+  href: string;
+  highlight?: boolean;
+  className?: string;
+}) {
   return (
-    <div className="flex justify-between gap-3">
-      <dt className="text-muted-foreground">{label}</dt>
-      <dd>
-        <Money value={value} tone={tone} />
-      </dd>
-    </div>
+    <Link
+      href={href}
+      className={cn(
+        "group flex flex-col rounded-xl border bg-card p-4 transition-colors hover:border-foreground/20",
+        highlight && "border-primary/40 bg-primary/5 hover:border-primary/60",
+        className,
+      )}
+    >
+      <span className="flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground">
+        {label}
+        <ChevronRight className="size-3.5 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
+      </span>
+      <span className={cn("mt-1 font-semibold tracking-tight", highlight ? "text-3xl" : "text-xl")}>
+        <Money value={value} tone="auto" />
+      </span>
+      <span className="mt-1 text-xs text-muted-foreground">{hint}</span>
+    </Link>
+  );
+}
+
+/** Money owed to family, from Family & Allocations (agreed amount, repaid, outstanding). */
+function BorrowedCard({ borrowed, className }: { borrowed: DashboardData["borrowed"]; className?: string }) {
+  // "Suraiya: Oct ৳2,500 · Nov ৳2,000 (MUST pay)" — next two open instalments per person.
+  const next = borrowed.byPerson
+    .filter((p) => p.open.length > 0)
+    .map((p) => `${p.name}: ${p.open.slice(0, 2).map((o) => `${formatMonth(o.month).split(" ")[0]} ${formatTaka(o.remaining)}${o.note ? ` (${o.note})` : ""}`).join(" · ")}`);
+  return (
+    <Link href="/people" className={cn("group flex flex-col rounded-xl border bg-card p-4 transition-colors hover:border-foreground/20", className)}>
+      <span className="flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground">
+        Borrowed money
+        <ChevronRight className="size-3.5 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
+      </span>
+      {borrowed.total === 0 ? (
+        <span className="mt-2 text-xs text-muted-foreground">Nothing owed. Track money you owe in Family &amp; Allocations.</span>
+      ) : (
+        <>
+          <span className="mt-1 text-xl font-semibold tracking-tight">
+            <Money value={borrowed.remaining} /> <span className="text-xs font-normal text-muted-foreground">left to repay</span>
+          </span>
+          <dl className="mt-2 grid grid-cols-3 gap-2 text-xs">
+            <div>
+              <dt className="text-muted-foreground">Borrowed</dt>
+              <dd className="font-medium tabular">{formatTaka(borrowed.total)}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Repaid</dt>
+              <dd className="font-medium tabular text-good">{formatTaka(borrowed.repaid)}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Remaining</dt>
+              <dd className="font-medium tabular">{formatTaka(borrowed.remaining)}</dd>
+            </div>
+          </dl>
+          <Meter value={borrowed.repaid} max={borrowed.total} className="mt-2 h-1.5" label={`${percent(borrowed.repaid, borrowed.total)}% repaid`} />
+          {next.length > 0 && (
+            <span className="mt-2 text-xs text-muted-foreground">
+              Next — {next.join(" | ")}
+            </span>
+          )}
+        </>
+      )}
+    </Link>
   );
 }
 

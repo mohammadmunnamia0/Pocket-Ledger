@@ -76,10 +76,10 @@ async function CalendarReport({ userId, sp }: { userId: string; sp: SP }) {
     ["+ Salary", r.salary],
     ["+ Additional income", r.additionalIncome],
     ...(r.broughtIn ? ([["+ Opening balance entries", r.broughtIn]] as [string, number][]) : []),
-    ["= Total available balance", r.totalAvailable, "font-medium border-t"],
+    ["= Total money this month (before spending)", r.totalAvailable, "font-medium border-t"],
     ["− Expenses", r.expenses],
     ["− Savings / investments (net)", r.savingsAndTransfers],
-    ["= Closing balance", r.closingBalance, "font-semibold border-t"],
+    ["= Closing balance (money left)", r.closingBalance, "font-semibold border-t"],
   ];
 
   return (
@@ -222,7 +222,7 @@ async function CycleReport({ userId }: { userId: string }) {
             <Cell label="Salary amount" value={c.startingAmount} />
             <Cell label="Carried forward in" value={c.carriedIn} />
             <Cell label="Other income in cycle" value={c.otherIncome} />
-            <Cell label="Total available" value={c.totalAvailable} strong />
+            <Cell label="Total at cycle start" value={c.totalAvailable} strong />
             <Cell label="Spent in cycle" value={c.totalSpent} hint={`${c.expenseCount} payments`} />
             <Cell label="Funded by this salary" value={c.fundedByThisSalary} />
             <Cell label="Funded by previous salaries" value={c.fundedByPrevious} />

@@ -15,10 +15,10 @@ const PRIORITY_STYLE = {
   low: { label: "Low", className: "border-l-good-mark" },
 } as const;
 
-export function AlertList({ alerts }: { alerts: ShownAlert[] }) {
+export function AlertList({ alerts, compact = false, onNavigate }: { alerts: ShownAlert[]; compact?: boolean; onNavigate?: () => void }) {
   const { pending, run } = useAction();
   return (
-    <ul className="grid grid-cols-1 gap-2 md:grid-cols-2">
+    <ul className={cn("grid grid-cols-1 gap-2", !compact && "md:grid-cols-2")}>
       {alerts.map((a) => (
         <li
           key={a.key}
@@ -54,7 +54,10 @@ export function AlertList({ alerts }: { alerts: ShownAlert[] }) {
                   <Link
                     href={a.action.href}
                     className="text-xs font-medium text-primary hover:underline"
-                    onClick={() => !a.read && run(() => alertStateAction(a.key, "read"), { success: false })}
+                    onClick={() => {
+                      if (!a.read) run(() => alertStateAction(a.key, "read"), { success: false });
+                      onNavigate?.();
+                    }}
                   >
                     {a.action.label} →
                   </Link>

@@ -1,10 +1,12 @@
 import { Suspense } from "react";
-import { LogOut, Plus } from "lucide-react";
+import { Bell, LogOut, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ActiveNav, Brand, NavList } from "@/components/app-shell/nav";
 import { MobileNav } from "@/components/app-shell/mobile-nav";
 import { QuickAdd } from "@/components/quick-add";
 import { InstallAppButton } from "@/components/pwa";
+import { AlertBell } from "@/components/alert-bell";
+import { getActiveAlerts } from "@/lib/services/alert-feed";
 import { requireUser } from "@/lib/auth/session";
 import { getLookups } from "@/lib/services/lookups";
 import { connectDB } from "@/lib/db/connect";
@@ -39,7 +41,16 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
           <div className="min-w-0 flex-1 lg:hidden">
             <Brand />
           </div>
-          <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
+            <Suspense
+              fallback={
+                <Button variant="ghost" size="icon" disabled aria-label="Notifications">
+                  <Bell />
+                </Button>
+              }
+            >
+              <AlertBellLoader />
+            </Suspense>
             <InstallAppButton />
             <Suspense
               fallback={
@@ -71,6 +82,11 @@ async function QuickAddLoader() {
       lastPaymentMethod={doc?.prefs?.lastPaymentMethod ?? "cash"}
     />
   );
+}
+
+async function AlertBellLoader() {
+  const user = await requireUser();
+  return <AlertBell alerts={await getActiveAlerts(user.id)} />;
 }
 
 async function UserMenu() {

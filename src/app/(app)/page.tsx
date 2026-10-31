@@ -5,12 +5,11 @@ import { ButtonLink } from "@/components/button-link";
 import { CardsSkeleton, EmptyState, Meter, PageHeader, Section, StatCard, TableSkeleton } from "@/components/common";
 import { Money } from "@/components/money";
 import { TxnList } from "@/components/txn-list";
-import { AlertList } from "@/components/alert-list";
 import { HelpButton } from "@/components/help";
 import { CategoryBarChart, DailySpendChart, IncomeExpenseChart } from "@/components/charts";
 import { requireUser } from "@/lib/auth/session";
 import { getDashboard } from "@/lib/services/dashboard";
-import { formatDate, formatMonthLong } from "@/lib/dates";
+import { addMonths, formatDate, formatMonthLong } from "@/lib/dates";
 import { formatTaka, percent } from "@/lib/money";
 
 export default function DashboardPage() {
@@ -48,67 +47,37 @@ async function Dashboard() {
 
   return (
     <div className="space-y-5">
-      {d.alerts.length > 0 && (
-        <Section
-          title="Smart Financial Alerts"
-          help="smartAlerts"
-          description="Based on your balance, commitments and spending"
-          actions={
-            <Link href="/alerts" className="text-xs text-muted-foreground hover:text-foreground">
-              History & settings
-            </Link>
-          }
-        >
-          <AlertList alerts={d.alerts} />
-        </Section>
-      )}
-
-      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.3fr_2fr]">
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.4fr_1fr]">
         <div className="rounded-xl border bg-card p-5">
           <div className="flex items-center gap-1">
-            <p className="text-xs font-medium text-muted-foreground">Remaining balance · {formatMonthLong(d.month)}</p>
+            <p className="text-sm font-medium text-muted-foreground">Available money now</p>
             <HelpButton topic="balanceCard" className="size-5" />
           </div>
-          <p className="mt-1 text-3xl font-semibold tracking-tight">
-            <Money value={m.remaining} tone="auto" />
+          <p className="mt-1 text-4xl font-semibold tracking-tight">
+            <Money value={m.availableNow} tone="auto" />
           </p>
-          <dl className="mt-4 grid gap-1.5 text-sm">
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">Carried forward</dt>
+          <p className="mt-1 text-xs text-muted-foreground">What you can spend today — your salaries&apos; unspent money after every paid expense.</p>
+          <dl className="mt-4 grid gap-1.5 text-sm" aria-label="How available money is calculated">
+            <Row label={`Left over from ${formatMonthLong(addMonths(d.month, -1))}`} value={m.carriedForward} />
+            <Row label="+ Income this month" value={m.incomeThisMonth} tone="income" />
+            <Row label="− Spent this month" value={m.spentThisMonth} />
+            {m.savedThisMonth !== 0 && <Row label="− Saved & invested this month" value={m.savedThisMonth} />}
+            <div className="flex justify-between gap-3 border-t pt-1.5 font-semibold">
+              <dt>= Available now</dt>
               <dd>
-                <Money value={m.openingBalance} />
-              </dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">+ Income this month</dt>
-              <dd>
-                <Money value={m.totalIncome} tone="income" />
-              </dd>
-            </div>
-            <div className="flex justify-between border-t pt-1.5 font-medium">
-              <dt>Total available</dt>
-              <dd>
-                <Money value={m.totalAvailable} />
-              </dd>
-            </div>
-            <div className="flex justify-between">
-              <dt className="text-muted-foreground">− Spent & saved this month</dt>
-              <dd>
-                <Money value={m.totalAvailable - m.remaining} />
+                <Money value={m.availableNow} tone="auto" />
               </dd>
             </div>
           </dl>
         </div>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <StatCard label="Total available balance" value={<Money value={m.totalAvailable} />} hint="Carried forward + this month's income" />
+        <div className="grid grid-cols-2 gap-3">
           <StatCard label="This month's salary" value={<Money value={m.currentMonthSalary} />} />
-          <StatCard label="Total income" value={<Money value={m.totalIncome} />} hint="This month" />
-          <StatCard label="Total expenses" value={<Money value={m.totalExpenses} />} hint={`Today: ${formatTaka(m.todaySpent)}`} />
-          <StatCard label="Total savings" value={<Money value={m.totalSavings} />} hint="Held in savings goals" />
+          <StatCard label="Spent today" value={<Money value={m.todaySpent} />} />
+          <StatCard label="In savings goals" value={<Money value={m.totalSavings} />} hint="Set aside — not counted as available" />
           <StatCard
             label="Pending payments"
             value={<Money value={m.pendingTotal} />}
-            hint={m.pendingCount ? `${m.pendingCount} not yet paid` : "Nothing pending"}
+            hint={m.pendingCount ? `${m.pendingCount} not paid yet — not deducted` : "Nothing pending"}
           />
         </div>
       </div>
@@ -138,7 +107,7 @@ async function Dashboard() {
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
               <Metric label="Previous salary savings" value={s.previousSavings} />
               <Metric label="Current salary received" value={s.currentSalary?.amount ?? 0} />
-              <Metric label="Total available funds" value={s.totalAvailableFunds} />
+              <Metric label="Available across all salaries" value={s.totalAvailableFunds} hint="Same as Available money now" />
               <Metric label="Spent this salary cycle" value={s.spentThisCycle} />
               <Metric label="Current salary remaining" value={s.currentSalaryRemaining} />
               <Metric label="Total accumulated savings" value={s.totalAccumulated} hint="Unspent older salaries + savings goals" />
@@ -256,6 +225,17 @@ async function Dashboard() {
           </ul>
         </Section>
       )}
+    </div>
+  );
+}
+
+function Row({ label, value, tone }: { label: string; value: number; tone?: "income" }) {
+  return (
+    <div className="flex justify-between gap-3">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd>
+        <Money value={value} tone={tone} />
+      </dd>
     </div>
   );
 }

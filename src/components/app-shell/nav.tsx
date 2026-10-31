@@ -21,7 +21,7 @@ import { cn } from "@/lib/utils";
 import { HelpButton } from "@/components/help";
 import type { HelpKey } from "@/lib/help-content";
 
-/** Shown under the app name in the sidebar. */
+/** MongoDB database account, shown under the app name in the sidebar as "DB - …". */
 export const OWNER_EMAIL = "mohammadmunna4141@gmail.com";
 
 export const NAV_ITEMS = [
@@ -89,7 +89,12 @@ export function Brand({ showEmail = false }: { showEmail?: boolean }) {
       </span>
       <span className="grid min-w-0 leading-tight">
         <span className="truncate font-semibold tracking-tight">PocketLedger</span>
-        {showEmail && <span className="truncate text-[11px] text-muted-foreground">{OWNER_EMAIL}</span>}
+        {showEmail && (
+          <span className="truncate text-[11px] text-muted-foreground" title={`MongoDB database account: ${OWNER_EMAIL}`}>
+            <span className="font-medium">DB - </span>
+            {OWNER_EMAIL}
+          </span>
+        )}
       </span>
     </Link>
   );

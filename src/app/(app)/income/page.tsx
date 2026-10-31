@@ -3,6 +3,7 @@ import Link from "next/link";
 import type { Metadata } from "next";
 import { EmptyState, Meter, PageHeader, Section, StatCard, TableSkeleton } from "@/components/common";
 import { Money } from "@/components/money";
+import { ButtonLink } from "@/components/button-link";
 import { TransactionForm } from "@/components/transaction-form";
 import { requireUser } from "@/lib/auth/session";
 import { getFundingSources, type FundingSourceRecord } from "@/lib/services/salary";
@@ -20,6 +21,7 @@ export default function IncomePage() {
       <PageHeader
         title="Income & Salary"
         help="income"
+        actions={<ButtonLink href="/income/history" variant="outline">Salary history</ButtonLink>}
         description="Each salary is tracked on its own. Expenses draw from the oldest salary with money left, and leftovers carry forward automatically."
       />
       <Suspense fallback={<TableSkeleton rows={10} />}>

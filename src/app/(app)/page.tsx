@@ -10,7 +10,7 @@ import { CategoryBarChart, DailySpendChart, IncomeExpenseChart } from "@/compone
 import { requireUser } from "@/lib/auth/session";
 import { getDashboard, type DashboardData } from "@/lib/services/dashboard";
 import { cn } from "@/lib/utils";
-import { addMonths, formatDate, formatMonth, formatMonthLong } from "@/lib/dates";
+import { formatDate, formatMonth, formatMonthLong } from "@/lib/dates";
 import { formatTaka, percent } from "@/lib/money";
 
 export default function DashboardPage() {
@@ -44,123 +44,136 @@ async function Dashboard() {
   const user = await requireUser();
   const d = await getDashboard(user.id);
   const m = d.metrics;
-  const prevMonth = addMonths(d.month, -1);
+  const p = d.period;
   const s = d.salary;
+  const carriedFrom = p?.carriedFrom.length
+    ? `Left from ${p.carriedFrom.map((c) => (p.carriedFrom.length > 1 ? `${c.label} (${formatTaka(c.amount)})` : c.label)).join(" + ")}`
+    : "Nothing was left from earlier salaries";
 
   return (
     <div className="space-y-5">
-      <section aria-labelledby="overview-title">
-        <div className="mb-3 flex items-center gap-1">
-          <h2 id="overview-title" className="text-sm font-semibold">
-            At a glance · {formatMonthLong(d.month)}
+      <section aria-labelledby="period-title">
+        <div className="mb-3 flex flex-wrap items-center gap-1">
+          <h2 id="period-title" className="text-sm font-semibold">
+            {p ? `This salary period · since ${formatDate(p.receivedOn)}` : "This salary period"}
           </h2>
           <HelpButton topic="balanceCard" className="size-5" />
+          {p && (
+            <Link href="/income/history" className="ml-auto text-xs text-muted-foreground hover:text-foreground">
+              Salary history →
+            </Link>
+          )}
         </div>
+        {!p ? (
+          <EmptyState
+            title="No salary recorded yet"
+            description="Add your salary to see what you carried forward, what you received, what you spent and what is left."
+            action={<ButtonLink href="/income">Add salary</ButtonLink>}
+          />
+        ) : (
+          // Reads left to right as one sum on desktop; on phones the answer comes first.
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
+            <OverviewCard
+              highlight
+              className="col-span-2 lg:order-5 lg:col-span-1"
+              href="/transactions"
+              label="= Remaining balance"
+              value={p.remaining}
+              hint={`${formatTaka(p.totalAvailable)} available − ${formatTaka(p.spends)} spent`}
+            />
+            <OverviewCard
+              className="lg:order-1"
+              href="/income/history"
+              label="Previous salary carryforward"
+              value={p.carriedIn}
+              hint={carriedFrom}
+            />
+            <OverviewCard
+              className="lg:order-2"
+              href={`/income/${p.salaryId}`}
+              label="+ Latest salary"
+              value={p.salary}
+              hint={`${p.label}, received ${formatDate(p.receivedOn)}${p.otherIncome ? ` · plus ${formatTaka(p.otherIncome)} other income` : ""}`}
+            />
+            <OverviewCard
+              className="lg:order-3"
+              href={`/income/history#period-${p.salaryId}`}
+              label="= Total available"
+              value={p.totalAvailable}
+              hint={p.otherIncome ? "Carryforward + salary + other income" : "Carryforward + latest salary"}
+            />
+            <OverviewCard
+              className="lg:order-4"
+              href={`/transactions?flow=out&status=paid&from=${p.receivedOn}`}
+              label="− Spends this period"
+              value={p.spends}
+              hint={`${p.paymentCount} payment${p.paymentCount === 1 ? "" : "s"} since ${formatDate(p.receivedOn)}${p.savedOrInvested ? ` · incl. ${formatTaka(p.savedOrInvested)} saved & invested` : ""}`}
+            />
+          </div>
+        )}
+      </section>
+
+      <section aria-labelledby="commitments-title">
+        <h2 id="commitments-title" className="mb-3 text-sm font-semibold">
+          Savings &amp; commitments
+        </h2>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
           <OverviewCard
-            highlight
-            className="col-span-2 lg:order-3 lg:col-span-1"
-            href={`/reports?month=${d.month}`}
-            label="Available total balance"
-            value={m.availableNow}
-            hint={[
-              `${formatTaka(m.carriedForward)} carried forward`,
-              `+ ${formatTaka(m.incomeThisMonth)} income`,
-              `− ${formatTaka(m.spentThisMonth)} spent`,
-              m.savedThisMonth ? `− ${formatTaka(m.savedThisMonth)} saved & invested` : null,
-            ]
-              .filter(Boolean)
-              .join(" ")}
-          />
-          <OverviewCard
-            className="lg:order-1"
-            href={`/reports?month=${prevMonth}`}
-            label="Previous month carryforward"
-            value={m.carriedForward}
-            hint={`Left at the end of ${formatMonthLong(prevMonth)}`}
-          />
-          <OverviewCard
-            className="lg:order-2"
-            href={`/transactions?type=expense&from=${d.month}-01`}
-            label="This month's spends"
-            value={m.spentThisMonth}
-            hint={m.savedThisMonth ? `Plus ${formatTaka(m.savedThisMonth)} saved & invested` : "Paid expenses so far this month"}
-          />
-          <OverviewCard
-            className="lg:order-4"
             href="/savings"
             label="In savings"
             value={m.inSavings}
             hint={`Savings goals ${formatTaka(m.savingsGoals)} · Invested ${formatTaka(m.invested)}`}
           />
           <OverviewCard
-            className="lg:order-5"
             href="/transactions?status=pending"
             label="Pending payments"
             value={m.pendingTotal}
             hint={m.pendingCount ? `${m.pendingCount} not paid yet — not deducted` : "Nothing waiting to be paid"}
           />
-          <BorrowedCard borrowed={d.borrowed} className="col-span-2 lg:order-6 lg:col-span-1" />
+          <BorrowedCard borrowed={d.borrowed} className="col-span-2 lg:col-span-1" />
         </div>
       </section>
 
       <Section
-        title="Salary carry-forward"
+        title="Each salary"
         help="carryForward"
-        description={
-          s.cycle
-            ? `Current cycle: ${s.cycle.label}, received ${formatDate(s.cycle.start)}. Expenses use the oldest salary first.`
-            : "Add your salary to start tracking how each salary is spent."
-        }
+        description="How much of every salary has been used and what is left. Spending always uses the oldest salary first."
         actions={
-          <Link href="/income" className="text-xs text-muted-foreground hover:text-foreground">
-            Salary records
+          <Link href="/income/history" className="text-xs text-muted-foreground hover:text-foreground">
+            Month-by-month history
           </Link>
         }
       >
         {s.breakdown.length === 0 ? (
-          <EmptyState
-            title="No salary recorded yet"
-            description="Record a salary to see carry-forward and salary-wise spending."
-            action={<ButtonLink href="/income">Add salary</ButtonLink>}
-          />
+          <EmptyState title="No salary recorded yet" action={<ButtonLink href="/income">Add salary</ButtonLink>} />
         ) : (
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_1.4fr]">
-            <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-              <Metric label="Previous salary savings" value={s.previousSavings} />
-              <Metric label="Current salary received" value={s.currentSalary?.amount ?? 0} />
-              <Metric label="Available across all salaries" value={s.totalAvailableFunds} hint="Same as Available total balance" />
-              <Metric label="Spent this salary cycle" value={s.spentThisCycle} />
-              <Metric label="Current salary remaining" value={s.currentSalaryRemaining} />
-              <Metric label="Total accumulated savings" value={s.totalAccumulated} hint="Unspent older salaries + savings goals" />
-            </dl>
-            <div className="relative overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-left text-xs text-muted-foreground">
-                    <th className="pb-2 font-medium">Salary</th>
-                    <th className="pb-2 text-right font-medium">Original</th>
-                    <th className="pb-2 text-right font-medium">Used</th>
-                    <th className="pb-2 text-right font-medium">Remaining</th>
+          <div className="relative overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-left text-xs text-muted-foreground">
+                  <th className="pb-2 font-medium">Salary</th>
+                  <th className="pb-2 text-right font-medium">Received</th>
+                  <th className="pb-2 text-right font-medium">Used</th>
+                  <th className="pb-2 text-right font-medium">Left</th>
+                </tr>
+              </thead>
+              <tbody className="tabular">
+                {s.breakdown.map((r) => (
+                  <tr key={r.id} className="border-t">
+                    <td className="py-2 pr-2">
+                      <Link href={`/income/${r.id}`} className="font-medium hover:underline">
+                        {r.label}
+                      </Link>
+                      <span className="block text-xs text-muted-foreground">{formatDate(r.date)}</span>
+                      <Meter value={r.used} max={r.amount} className="mt-1.5 h-1.5 max-w-40" label={`${percent(r.used, r.amount)}% used`} />
+                    </td>
+                    <td className="py-2 text-right">{formatTaka(r.amount)}</td>
+                    <td className="py-2 text-right">{formatTaka(r.used)}</td>
+                    <td className="py-2 text-right font-medium">{formatTaka(r.remaining)}</td>
                   </tr>
-                </thead>
-                <tbody className="tabular">
-                  {s.breakdown.map((r) => (
-                    <tr key={r.id} className="border-t">
-                      <td className="py-2 pr-2">
-                        <Link href={`/income/${r.id}`} className="font-medium hover:underline">
-                          {r.label}
-                        </Link>
-                        <Meter value={r.used} max={r.amount} className="mt-1.5 h-1.5 max-w-40" label={`${percent(r.used, r.amount)}% used`} />
-                      </td>
-                      <td className="py-2 text-right">{formatTaka(r.amount)}</td>
-                      <td className="py-2 text-right">{formatTaka(r.used)}</td>
-                      <td className="py-2 text-right font-medium">{formatTaka(r.remaining)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </Section>
@@ -332,14 +345,3 @@ function BorrowedCard({ borrowed, className }: { borrowed: DashboardData["borrow
   );
 }
 
-function Metric({ label, value, hint }: { label: string; value: number; hint?: string }) {
-  return (
-    <div>
-      <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className="mt-0.5 font-semibold">
-        <Money value={value} />
-      </dd>
-      {hint && <dd className="text-[11px] text-muted-foreground">{hint}</dd>}
-    </div>
-  );
-}

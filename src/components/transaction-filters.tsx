@@ -35,7 +35,7 @@ export function TransactionFilters({ categories, persons }: { categories: Catego
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [q]);
 
-  const active = ["q", "type", "status", "category", "person", "from", "to"].some((k) => params.get(k));
+  const active = ["q", "type", "flow", "status", "category", "person", "from", "to"].some((k) => params.get(k));
 
   return (
     <div className="mb-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-[1.5fr_repeat(4,1fr)_auto_auto_auto]" aria-busy={isPending}>
@@ -43,8 +43,17 @@ export function TransactionFilters({ categories, persons }: { categories: Catego
         <Search className="pointer-events-none absolute top-1/2 left-2.5 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
         <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search title, notes, items…" className="h-9 pl-8" aria-label="Search transactions" />
       </div>
-      <NativeSelect aria-label="Type" value={params.get("type") ?? ""} onChange={(e) => update({ type: e.target.value })}>
+      <NativeSelect
+        aria-label="Type"
+        value={params.get("flow") ? `flow:${params.get("flow")}` : (params.get("type") ?? "")}
+        onChange={(e) => {
+          const v = e.target.value;
+          update(v.startsWith("flow:") ? { flow: v.slice(5), type: "" } : { type: v, flow: "" });
+        }}
+      >
         <option value="">All types</option>
+        <option value="flow:out">Money out (spends &amp; savings)</option>
+        <option value="flow:in">Money in (income)</option>
         {TXN_TYPES.map((t) => (
           <option key={t} value={t}>
             {TXN_TYPE_LABELS[t]}

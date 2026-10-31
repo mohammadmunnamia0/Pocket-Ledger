@@ -161,6 +161,8 @@ export interface SalaryCycle {
   startingAmount: number;
   /** Unspent money from earlier sources at the moment this salary arrived. */
   carriedIn: number;
+  /** Which earlier salaries (or other income) the carried-in money is left over from. */
+  carriedFrom: { sourceId: string; label: string; date: string; amount: number }[];
   otherIncome: number;
   totalAvailable: number;
   totalSpent: number;
@@ -172,6 +174,8 @@ export interface SalaryCycle {
   /** Paid outflows dated in the cycle that are not yet funded (should always be 0). */
   unfunded: number;
   expenseCount: number;
+  /** Money left when the period ended (= carried into the next salary); for the current period, left now. */
+  remainingAtEnd: number;
 }
 
 /**
@@ -203,6 +207,16 @@ export async function getSalaryCycles(userId: string): Promise<SalaryCycle[]> {
       .filter((a) => earlierIds.has(a.sourceId) && a.consumerDate < start)
       .reduce((acc, a) => acc + a.amount, 0);
     const carriedIn = earlier.reduce((acc, s) => acc + s.amount, 0) - usedBeforeStart;
+    const carriedFrom = earlier
+      .map((src) => ({
+        sourceId: src.id,
+        label: src.label,
+        date: src.date,
+        amount:
+          src.amount -
+          ledger.allocations.filter((a) => a.sourceId === src.id && a.consumerDate < start).reduce((acc, a) => acc + a.amount, 0),
+      }))
+      .filter((x) => x.amount > 0);
 
     const otherInCycle = ledger.sources.filter((s) => s.id !== sal.id && !earlierIds.has(s.id) && inCycle(s.date));
     const otherIncome = otherInCycle.reduce((acc, s) => acc + s.amount, 0);
@@ -228,6 +242,7 @@ export async function getSalaryCycles(userId: string): Promise<SalaryCycle[]> {
       nextSalaryDate: next?.date ?? null,
       startingAmount: sal.amount,
       carriedIn,
+      carriedFrom,
       otherIncome,
       totalAvailable: carriedIn + sal.amount + otherIncome,
       totalSpent,
@@ -238,6 +253,7 @@ export async function getSalaryCycles(userId: string): Promise<SalaryCycle[]> {
       previousRemaining: carriedIn - fundedByPrevious,
       unfunded: totalSpent - (fundedByThisSalary + fundedByPrevious + fundedByOther),
       expenseCount: spent.length,
+      remainingAtEnd: carriedIn + sal.amount + otherIncome - totalSpent,
     };
   });
 }
@@ -245,4 +261,42 @@ export async function getSalaryCycles(userId: string): Promise<SalaryCycle[]> {
 /** The cycle containing `date` (defaults to today). */
 export function currentCycle(cycles: SalaryCycle[], date: string = todayISO()): SalaryCycle | null {
   return [...cycles].reverse().find((c) => c.start <= date && (c.end === null || c.end >= date)) ?? null;
+}
+
+export interface SalaryPeriodPayment {
+  id: string;
+  date: string;
+  title: string;
+  type: TxnType;
+  amount: number;
+  categoryLabel: string | null;
+}
+
+/**
+ * Month-by-month salary history: each salary period (received date → day before the next
+ * salary) with what was carried in, received, spent, and carried on — plus every payment
+ * made in that period. Newest first.
+ */
+export async function getSalaryHistory(userId: string) {
+  const [cycles, lookups] = await Promise.all([getSalaryCycles(userId), getLookups(userId)]);
+  const cats = categoryMap(lookups);
+  const docs = await Transaction.find(
+    { userId: oid(userId), status: "paid", type: { $in: CONSUMER_TYPES } },
+    { date: 1, title: 1, type: 1, amount: 1, categoryId: 1, createdAt: 1 },
+  )
+    .sort({ date: 1, createdAt: 1 })
+    .lean();
+  return [...cycles].reverse().map((c) => ({
+    ...c,
+    payments: docs
+      .filter((d) => d.date >= c.start && (c.end === null || d.date <= c.end))
+      .map<SalaryPeriodPayment>((d) => ({
+        id: d._id.toString(),
+        date: d.date,
+        title: d.title,
+        type: d.type,
+        amount: d.amount,
+        categoryLabel: d.categoryId ? (cats.get(d.categoryId.toString())?.label ?? null) : d.type === "savings_deposit" ? "Moved to savings" : null,
+      })),
+  }));
 }

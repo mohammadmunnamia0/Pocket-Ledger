@@ -52,6 +52,11 @@ async function TransactionsView({ searchParams }: { searchParams: Promise<SP> })
   const filters = parseTxnFilters(sp);
   const lookups = await getLookups(user.id);
   const list = await listTransactions(user.id, filters, lookups);
+  // A running balance is only meaningful when every transaction is listed. Filtering by type,
+  // status, category, person or search hides some (e.g. the salary), so the balance would jump
+  // for no visible reason — hide it then. A date range alone keeps every row, so it stays.
+  const showBalance = !(filters.q || filters.type || filters.flow || filters.status || filters.categoryId || filters.personId);
+  const filtered = showBalance ? !!(filters.from || filters.to) : true;
 
   const pageHref = (p: number) => {
     const next = new URLSearchParams(Object.entries(sp).filter((e): e is [string, string] => typeof e[1] === "string"));
@@ -62,6 +67,33 @@ async function TransactionsView({ searchParams }: { searchParams: Promise<SP> })
   return (
     <>
       <TransactionFilters categories={lookups.categories} persons={lookups.persons} />
+      {filtered && list.total > 0 && (
+        <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border bg-card px-3 py-2 text-sm">
+          <span className="text-muted-foreground">
+            {list.total} transaction{list.total === 1 ? "" : "s"}
+          </span>
+          {list.totals.moneyIn > 0 && (
+            <span>
+              Money in <Money value={list.totals.moneyIn} tone="income" className="font-semibold" />
+            </span>
+          )}
+          {list.totals.moneyOut > 0 && (
+            <span>
+              Money out <Money value={list.totals.moneyOut} className="font-semibold" />
+            </span>
+          )}
+          {list.totals.pending > 0 && (
+            <span className="text-warning">
+              Pending <Money value={list.totals.pending} className="font-semibold" /> (not deducted)
+            </span>
+          )}
+          {!showBalance && (
+            <span className="w-full text-xs text-muted-foreground">
+              Running balance is hidden while filtering — it also moves with transactions not shown here (like your salary). Clear the filters to see it.
+            </span>
+          )}
+        </div>
+      )}
       {list.rows.length === 0 ? (
         <EmptyState title="No transactions found" description="Try changing the filters, or add an expense with Quick Add." />
       ) : (
@@ -78,7 +110,7 @@ async function TransactionsView({ searchParams }: { searchParams: Promise<SP> })
                   <th className="px-3 py-2.5 text-right font-medium">Amount</th>
                   <th className="px-3 py-2.5 font-medium">Method</th>
                   <th className="px-3 py-2.5 font-medium">Status</th>
-                  <th className="px-3 py-2.5 text-right font-medium">Balance</th>
+                  {showBalance && <th className="px-3 py-2.5 text-right font-medium">Balance</th>}
                   <th className="px-3 py-2.5 text-right font-medium">
                     <span className="sr-only">Actions</span>
                   </th>
@@ -107,9 +139,11 @@ async function TransactionsView({ searchParams }: { searchParams: Promise<SP> })
                     <td className="px-3 py-2.5">
                       <StatusBadge status={t.status} />
                     </td>
-                    <td className="px-3 py-2.5 text-right">
-                      <Money value={t.runningBalance ?? 0} tone="auto" className="text-muted-foreground" />
-                    </td>
+                    {showBalance && (
+                      <td className="px-3 py-2.5 text-right">
+                        <Money value={t.runningBalance ?? 0} tone="auto" className="text-muted-foreground" />
+                      </td>
+                    )}
                     <td className="px-3 py-2.5">
                       <div className="flex justify-end gap-0.5">
                         {t.status === "pending" && <MarkPaidButton id={t.id} dueDate={t.date} size="xs" />}
@@ -143,9 +177,9 @@ async function TransactionsView({ searchParams }: { searchParams: Promise<SP> })
                     <TxnAmount t={t} className="text-sm" />
                     {t.status === "pending" ? (
                       <StatusBadge status="pending" />
-                    ) : (
+                    ) : showBalance ? (
                       <span className="text-[11px] text-muted-foreground tabular">Bal {formatTaka(Math.round((t.runningBalance ?? 0) / 100) * 100)}</span>
-                    )}
+                    ) : null}
                   </div>
                 </Link>
               </li>

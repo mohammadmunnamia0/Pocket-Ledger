@@ -41,12 +41,32 @@ export async function getDashboard(userId: string) {
   const cycle = currentCycle(cycles, today);
   const salaryIdx = cycle ? sources.findIndex((s) => s.id === cycle.salaryId) : -1;
   const currentSalary = salaryIdx >= 0 ? sources[salaryIdx] : null;
-  const previousSavings = sources.slice(0, Math.max(0, salaryIdx)).reduce((s, r) => s + r.remaining, 0);
-  const totalAvailableFunds = sources.reduce((s, r) => s + r.remaining, 0);
   const salaryBreakdown = sources
     .filter((s) => s.kind === "salary" || s.remaining > 0)
     .slice(-6)
     .reverse();
+
+  // The current salary period, from the day the latest salary arrived up to today. Built from
+  // the same records as the Transactions list, so it adds up exactly to the money in hand:
+  //   carried in + salary + other income − spends = remaining.
+  const pr = cycle ? await getPeriodReport(userId, cycle.start, today, {}, lookups) : null;
+  const period =
+    cycle && pr
+      ? {
+          salaryId: cycle.salaryId,
+          label: cycle.label,
+          receivedOn: cycle.start,
+          carriedIn: pr.openingBalance,
+          carriedFrom: cycle.carriedFrom,
+          salary: pr.salary,
+          otherIncome: pr.additionalIncome + pr.broughtIn,
+          totalAvailable: pr.openingBalance + pr.salary + pr.additionalIncome + pr.broughtIn,
+          spends: pr.totalOutflows,
+          savedOrInvested: pr.savingsAndTransfers,
+          paymentCount: pr.transactions.filter((t) => t.status === "paid" && (t.type === "expense" || t.type === "savings_deposit")).length,
+          remaining: pr.closingBalance,
+        }
+      : null;
 
   // Daily spending for every day of the month so far.
   const dailyMap = new Map(mtd.daily.map((d) => [d.date, d.total]));
@@ -58,13 +78,10 @@ export async function getDashboard(userId: string) {
   return {
     today,
     month,
+    period,
     metrics: {
-      /** The one number that matters: money you can spend right now. */
-      availableNow: mtd.closingBalance,
-      carriedForward: mtd.openingBalance,
-      incomeThisMonth: mtd.totalIncome + mtd.broughtIn,
-      spentThisMonth: mtd.expenses,
-      savedThisMonth: mtd.savingsAndTransfers,
+      /** Money you can spend right now (equals the period's remaining and the sum of salary remainders). */
+      availableNow: balance.spendable,
       /** Set aside outside spendable money: savings-goal funds + money invested (all time). */
       inSavings: balance.savings + invested,
       savingsGoals: balance.savings,
@@ -73,16 +90,7 @@ export async function getDashboard(userId: string) {
       pendingCount: balance.pendingCount,
     },
     borrowed,
-    salary: {
-      cycle,
-      currentSalary,
-      previousSavings,
-      totalAvailableFunds,
-      currentSalaryRemaining: currentSalary?.remaining ?? 0,
-      spentThisCycle: cycle?.totalSpent ?? 0,
-      totalAccumulated: previousSavings + balance.savings,
-      breakdown: salaryBreakdown,
-    },
+    salary: { currentSalary, breakdown: salaryBreakdown },
     categories: mtd.categories,
     daily,
     series,

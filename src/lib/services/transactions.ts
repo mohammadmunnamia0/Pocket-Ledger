@@ -365,6 +365,8 @@ export interface TxnFilters {
   status?: TxnStatus;
   categoryId?: string;
   personId?: string;
+  /** "out" = expenses + savings deposits, "in" = income + savings withdrawals. */
+  flow?: "in" | "out";
   billOnly?: boolean;
   goalId?: string;
   page?: number;
@@ -409,6 +411,8 @@ export async function listTransactions(userId: string, filters: TxnFilters, look
     match.date = { ...(filters.from ? { $gte: filters.from } : {}), ...(filters.to ? { $lte: filters.to } : {}) };
   }
   if (filters.type) match.type = filters.type;
+  else if (filters.flow === "out") match.type = { $in: ["expense", "savings_deposit"] };
+  else if (filters.flow === "in") match.type = { $in: ["income", "savings_withdrawal"] };
   if (filters.status) match.status = filters.status;
   if (filters.personId) match.personId = oid(filters.personId);
   if (filters.billOnly) match.bill = { $ne: null };
@@ -443,15 +447,34 @@ export async function listTransactions(userId: string, filters: TxnFilters, look
       $facet: {
         rows: [{ $skip: (page - 1) * pageSize }, { $limit: pageSize }, { $project: { _delta: 0 } }],
         total: [{ $count: "n" }],
+        // Totals for the whole filtered list (not just this page), so a filtered view always
+        // explains its own numbers.
+        sums: [
+          {
+            $group: {
+              _id: null,
+              moneyIn: { $sum: { $cond: [{ $and: [{ $eq: ["$status", "paid"] }, { $in: ["$type", ["income", "savings_withdrawal"]] }] }, "$amount", 0] } },
+              moneyOut: { $sum: { $cond: [{ $and: [{ $eq: ["$status", "paid"] }, { $in: ["$type", ["expense", "savings_deposit"]] }] }, "$amount", 0] } },
+              pending: { $sum: { $cond: [{ $eq: ["$status", "pending"] }, "$amount", 0] } },
+              pendingCount: { $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] } },
+            },
+          },
+        ],
       },
     },
   ];
 
-  const [res] = await Transaction.aggregate<{ rows: LeanTxn[]; total: { n: number }[] }>(pipeline);
+  const [res] = await Transaction.aggregate<{
+    rows: LeanTxn[];
+    total: { n: number }[];
+    sums: { moneyIn: number; moneyOut: number; pending: number; pendingCount: number }[];
+  }>(pipeline);
   const total = res?.total[0]?.n ?? 0;
+  const sums = res?.sums[0];
   return {
     rows: (res?.rows ?? []).map((r) => toTxnDTO(r, lk)),
     total,
+    totals: { moneyIn: sums?.moneyIn ?? 0, moneyOut: sums?.moneyOut ?? 0, pending: sums?.pending ?? 0, pendingCount: sums?.pendingCount ?? 0 },
     page,
     pageSize,
     pages: Math.max(1, Math.ceil(total / pageSize)),

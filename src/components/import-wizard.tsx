@@ -85,7 +85,7 @@ export function ImportWizard() {
             </div>
           )}
 
-          <div className="overflow-x-auto rounded-xl border bg-card">
+          <div className="relative overflow-x-auto rounded-xl border bg-card">
             <table className="w-full text-sm">
               <thead className="border-b text-left text-xs text-muted-foreground">
                 <tr>

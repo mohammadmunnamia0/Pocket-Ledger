@@ -67,7 +67,7 @@ async function TransactionsView({ searchParams }: { searchParams: Promise<SP> })
       ) : (
         <>
           {/* Desktop table */}
-          <div className="hidden overflow-x-auto rounded-xl border bg-card md:block">
+          <div className="relative hidden overflow-x-auto rounded-xl border bg-card lg:block">
             <table className="w-full text-sm">
               <thead className="border-b text-left text-xs text-muted-foreground">
                 <tr>
@@ -128,7 +128,7 @@ async function TransactionsView({ searchParams }: { searchParams: Promise<SP> })
           </div>
 
           {/* Mobile list */}
-          <ul className="divide-y rounded-xl border bg-card md:hidden">
+          <ul className="divide-y rounded-xl border bg-card lg:hidden">
             {list.rows.map((t) => (
               <li key={t.id}>
                 <Link href={`/transactions/${t.id}`} className="flex items-center gap-3 px-3 py-3">

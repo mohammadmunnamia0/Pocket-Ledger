@@ -79,8 +79,9 @@ export function QuickAdd({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogTrigger render={<Button size="lg" />}>
-        <Plus /> Quick Add
+      <DialogTrigger render={<Button size="lg" aria-label="Quick Add expense" />}>
+        <Plus /> <span className="min-[400px]:hidden">Add</span>
+        <span className="hidden min-[400px]:inline">Quick Add</span>
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>

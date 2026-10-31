@@ -1,5 +1,6 @@
 import { Suspense } from "react";
 import { redirect } from "next/navigation";
+import { connection } from "next/server";
 import type { Metadata } from "next";
 import { LoginForm } from "@/components/auth-forms";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -21,6 +22,8 @@ export default function LoginPage({ searchParams }: PageProps<"/login">) {
 
 async function LoginGate({ searchParams }: { searchParams: PageProps<"/login">["searchParams"] }) {
   const sp = await searchParams;
+  // Database access must happen at request time, never during (partial) prerendering.
+  await connection();
   if (!(await hasAnyUser())) redirect("/setup");
   const next = typeof sp.next === "string" ? sp.next : undefined;
   return <LoginForm next={next} />;

@@ -106,13 +106,29 @@ export async function createUser(input: { name: string; email: string; password:
   return user._id.toString();
 }
 
-export async function verifyCredentials(email: string, password: string): Promise<string | null> {
+/**
+ * Check a sign-in. The reason is for server logs only — the user always sees the same
+ * generic message so it never reveals whether an email is registered.
+ */
+export async function verifyCredentials(
+  email: string,
+  password: string,
+): Promise<{ userId: string | null; reason: "ok" | "unknown-email" | "wrong-password" }> {
   await connectDB();
   const user = await User.findOne({ email: email.toLowerCase().trim() }, { passwordHash: 1 }).lean();
   // Compare against a dummy hash when the user is missing to keep timing uniform.
   const hash = user?.passwordHash ?? "$2a$12$C6UzMDM.H6dfI/f/IKcEeO7mGJr8M3sZ7G6m2X4Zl1yJXQxKkY3W.";
   const ok = await bcrypt.compare(password, hash);
-  return ok && user ? user._id.toString() : null;
+  if (!user) return { userId: null, reason: "unknown-email" };
+  return ok ? { userId: user._id.toString(), reason: "ok" } : { userId: null, reason: "wrong-password" };
+}
+
+/** Set a new password directly (used by the recovery script — there is no email reset). */
+export async function resetPassword(email: string, next: string): Promise<boolean> {
+  await connectDB();
+  if (next.length < 8) throw new AppError("Password must be at least 8 characters");
+  const res = await User.updateOne({ email: email.toLowerCase().trim() }, { $set: { passwordHash: await bcrypt.hash(next, 12) } });
+  return res.matchedCount === 1;
 }
 
 export async function changePassword(userId: string, current: string, next: string): Promise<void> {

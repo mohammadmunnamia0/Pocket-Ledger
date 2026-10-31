@@ -90,7 +90,7 @@ async function Person({ params }: { params: Promise<{ id: string }> }) {
       <Section title="Monthly allocations" help="allocations" description="Budget commitments — they reserve money in alerts but never change your cash balance.">
         <AllocationForm personId={p.id} defaultAmount={p.monthlyAllocation} />
         {allocations.length > 0 && (
-          <div className="mt-5 overflow-x-auto">
+          <div className="mt-5 relative overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-muted-foreground">
                 <tr>

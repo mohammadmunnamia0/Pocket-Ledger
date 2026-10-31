@@ -143,7 +143,7 @@ async function Dashboard() {
               <Metric label="Current salary remaining" value={s.currentSalaryRemaining} />
               <Metric label="Total accumulated savings" value={s.totalAccumulated} hint="Unspent older salaries + savings goals" />
             </dl>
-            <div className="overflow-x-auto">
+            <div className="relative overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-left text-xs text-muted-foreground">

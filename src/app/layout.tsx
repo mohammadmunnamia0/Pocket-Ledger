@@ -18,6 +18,9 @@ export const metadata: Metadata = {
   appleWebApp: { capable: true, title: "PocketLedger", statusBarStyle: "default" },
   // Stop iOS turning amounts like 20000 into tappable phone numbers.
   formatDetection: { telephone: false, date: false, address: false, email: false },
+  // Next emits only the generic "mobile-web-app-capable"; older iOS versions need the Apple
+  // tag to open the home-screen icon full-screen instead of inside Safari.
+  other: { "apple-mobile-web-app-capable": "yes" },
 };
 
 export const viewport: Viewport = {

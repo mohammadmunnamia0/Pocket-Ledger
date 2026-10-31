@@ -173,3 +173,24 @@
     color: var(--popover-foreground);
   }
 }
+
+/* Mobile form fixes */
+@layer base {
+  /* iOS Safari gives date/month inputs an intrinsic min-width that overflows grid columns. */
+  input[type="date"],
+  input[type="month"] {
+    min-width: 0;
+    -webkit-appearance: none;
+    appearance: none;
+  }
+  input[type="date"]::-webkit-date-and-time-value,
+  input[type="month"]::-webkit-date-and-time-value {
+    text-align: left;
+  }
+  /* No grey flash on tap; keep text size stable when rotating a phone. */
+  html {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+}

@@ -88,7 +88,7 @@ export function Brand({ showEmail = false }: { showEmail?: boolean }) {
         <HandCoins className="size-4" aria-hidden />
       </span>
       <span className="grid min-w-0 leading-tight">
-        <span className="font-semibold tracking-tight">PocketLedger</span>
+        <span className="truncate font-semibold tracking-tight">PocketLedger</span>
         {showEmail && <span className="truncate text-[11px] text-muted-foreground">{OWNER_EMAIL}</span>}
       </span>
     </Link>

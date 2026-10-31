@@ -62,7 +62,7 @@ export function CategoryManager({ categories }: { categories: CategoryRow[] }) {
                   <button
                     type="button"
                     onClick={() => setEditing({ mode: "create", parentId: root.id })}
-                    className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-xs text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                    className="flex w-full items-center gap-1.5 rounded-md px-2 py-1.5 text-xs text-muted-foreground pointer-coarse:py-2.5 hover:bg-muted/50 hover:text-foreground"
                   >
                     <Plus className="size-3.5" /> Add sub-category
                   </button>

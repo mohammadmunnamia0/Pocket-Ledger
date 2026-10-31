@@ -449,6 +449,29 @@ const AlertStateSchema = new Schema<AlertStateDoc>({
 AlertStateSchema.index({ userId: 1, key: 1 }, { unique: true });
 AlertStateSchema.index({ userId: 1, lastSeenAt: -1 });
 
+/* ------------------------------------------------------------------ Login throttling */
+
+/**
+ * Failed sign-in counter, keyed by email + client IP. Stored in the database (not process
+ * memory) so the limit is consistent across serverless instances; expires automatically.
+ */
+export interface LoginAttemptDoc {
+  _id: Types.ObjectId;
+  key: string;
+  failures: number;
+  windowStart: Date;
+  lockedUntil: Date | null;
+  expiresAt: Date;
+}
+
+const LoginAttemptSchema = new Schema<LoginAttemptDoc>({
+  key: { type: String, required: true, unique: true },
+  failures: { type: Number, default: 0 },
+  windowStart: { type: Date, required: true },
+  lockedUntil: { type: Date, default: null },
+  expiresAt: { type: Date, required: true, index: { expireAfterSeconds: 0 } },
+});
+
 /* ------------------------------------------------------------------ Exports */
 
 export const User = getModel<UserDoc>("User", UserSchema);
@@ -462,6 +485,7 @@ export const FundingAllocation = getModel<FundingAllocationDoc>("FundingAllocati
 export const AllocationAudit = getModel<AllocationAuditDoc>("AllocationAudit", AllocationAuditSchema);
 export const RecurringBill = getModel<RecurringBillDoc>("RecurringBill", RecurringBillSchema);
 export const AlertState = getModel<AlertStateDoc>("AlertState", AlertStateSchema);
+export const LoginAttempt = getModel<LoginAttemptDoc>("LoginAttempt", LoginAttemptSchema);
 
 export function oid(id: string | Types.ObjectId): Types.ObjectId {
   return typeof id === "string" ? new Types.ObjectId(id) : id;

@@ -73,7 +73,7 @@ async function History({ params }: { params: Promise<{ id: string }> }) {
         {expenses.length === 0 ? (
           <EmptyState title="Nothing spent from this salary yet" description="Older salaries are used first, so this one is untouched until they run out." />
         ) : (
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-muted-foreground">
                 <tr>

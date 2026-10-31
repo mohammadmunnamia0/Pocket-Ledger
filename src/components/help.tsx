@@ -28,7 +28,7 @@ export function HelpButton({ topic, className, label }: { topic: HelpKey; classN
         aria-label={label ?? "সাহায্য — এই অংশটি কীভাবে কাজ করে"}
         title="সাহায্য"
         className={cn(
-          "inline-grid size-6 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors outline-none hover:bg-muted hover:text-primary focus-visible:ring-3 focus-visible:ring-ring/50",
+          "inline-grid size-6 pointer-coarse:size-8 shrink-0 place-items-center rounded-full text-muted-foreground transition-colors outline-none hover:bg-muted hover:text-primary focus-visible:ring-3 focus-visible:ring-ring/50",
           className,
         )}
       >

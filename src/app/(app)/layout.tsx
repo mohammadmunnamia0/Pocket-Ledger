@@ -33,17 +33,19 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
       </aside>
 
       <div className="min-w-0">
-        <header className="sticky top-0 z-30 flex h-[calc(3.5rem+env(safe-area-inset-top))] items-center gap-2 border-b bg-background/90 px-4 pt-[env(safe-area-inset-top)] backdrop-blur supports-[backdrop-filter]:bg-background/75 sm:px-6">
+        <header className="sticky top-0 z-30 flex h-[calc(3.5rem+env(safe-area-inset-top))] items-center gap-1.5 border-b bg-background/90 px-3 pt-[env(safe-area-inset-top)] sm:gap-2 backdrop-blur supports-[backdrop-filter]:bg-background/75 sm:px-6">
           <MobileNav />
-          <div className="lg:hidden">
+          {/* min-w-0 lets the name truncate on very narrow phones instead of pushing buttons off-screen. */}
+          <div className="min-w-0 flex-1 lg:hidden">
             <Brand />
           </div>
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-2">
             <InstallAppButton />
             <Suspense
               fallback={
                 <Button size="lg" disabled>
-                  <Plus /> Quick Add
+                  <Plus /> <span className="min-[400px]:hidden">Add</span>
+                  <span className="hidden min-[400px]:inline">Quick Add</span>
                 </Button>
               }
             >

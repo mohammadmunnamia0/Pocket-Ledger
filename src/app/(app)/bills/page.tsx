@@ -139,7 +139,7 @@ async function Bills() {
 
       {typesInYear.length > 0 && (
         <Section title={`${year} by billing month`} description="Totals by the month each bill belongs to (not when it was paid).">
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-muted-foreground">
                 <tr>
@@ -174,7 +174,7 @@ async function Bills() {
         {history.rows.length === 0 ? (
           <EmptyState title="No bills recorded yet" />
         ) : (
-          <div className="overflow-x-auto">
+          <div className="relative overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="text-left text-xs text-muted-foreground">
                 <tr>

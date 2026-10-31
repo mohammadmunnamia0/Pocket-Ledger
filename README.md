@@ -48,6 +48,19 @@ node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
 
 The database needs to be a **replica set** for multi-document transactions. MongoDB Atlas clusters already are.
 
+### Can't sign in?
+
+- Use the **email you signed up with** — passwords are case-sensitive; tap the eye icon to see what was typed or auto-filled.
+- After 8 wrong attempts from the same network, sign-in for that email pauses for 10 minutes (the message says how long).
+- Each browser keeps its own session, and an installed iPhone app keeps a separate one from Safari, so sign in once in each.
+- Forgot the password? Reset it from your computer (uses `.env.local`), which also lifts any lock:
+
+```bash
+npx tsx scripts/reset-password.ts you@example.com "new-password"
+```
+
+Failed sign-ins are logged on the server with a reason (`unknown-email` / `wrong-password`, never the password), visible in the Vercel runtime logs.
+
 ### Scripts
 
 | Command | What it does |

@@ -68,8 +68,9 @@ export function TransactionFilters({ categories, persons }: { categories: Catego
           </option>
         ))}
       </NativeSelect>
-      <Input type="date" aria-label="From date" value={params.get("from") ?? ""} onChange={(e) => update({ from: e.target.value })} className="h-9" />
-      <Input type="date" aria-label="To date" value={params.get("to") ?? ""} onChange={(e) => update({ to: e.target.value })} className="h-9" />
+      {/* Visible "From"/"To" labels: empty date inputs render as blank boxes on iOS. */}
+      <DateFilter label="From" value={params.get("from") ?? ""} onChange={(v) => update({ from: v })} />
+      <DateFilter label="To" value={params.get("to") ?? ""} onChange={(v) => update({ to: v })} />
       {active ? (
         <Button
           variant="ghost"
@@ -85,5 +86,14 @@ export function TransactionFilters({ categories, persons }: { categories: Catego
         <span className="hidden lg:block" />
       )}
     </div>
+  );
+}
+
+function DateFilter({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <label className="relative block">
+      <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-xs text-muted-foreground">{label}</span>
+      <Input type="date" aria-label={`${label} date`} value={value} onChange={(e) => onChange(e.target.value)} className="h-9 pl-11" />
+    </label>
   );
 }

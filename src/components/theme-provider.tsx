@@ -27,7 +27,7 @@ export function ThemeSwitcher() {
           aria-checked={theme === value}
           onClick={() => setTheme(value)}
           className={cn(
-            "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs text-muted-foreground transition-colors",
+            "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-xs text-muted-foreground transition-colors pointer-coarse:px-3 pointer-coarse:py-2.5",
             theme === value && "bg-muted text-foreground",
           )}
         >

@@ -1,7 +1,7 @@
 /**
  * Reset the account password when you can't sign in (there is no email-based reset).
  *
- *   npx tsx scripts/reset-password.ts you@example.com "new-password"
+ *   npx tsx scripts/reset-password.mts you@example.com "new-password"
  *
  * Uses MONGODB_URI / MONGODB_DB from .env.local, so it changes the database those point to.
  */
@@ -12,7 +12,7 @@ import { LoginAttempt } from "../src/lib/db/models";
 
 const [email, password] = process.argv.slice(2);
 if (!email || !password) {
-  console.error('Usage: npx tsx scripts/reset-password.ts <email> "<new password>"');
+  console.error('Usage: npx tsx scripts/reset-password.mts <email> "<new password>"');
   process.exit(1);
 }
 if (existsSync(".env.local")) process.loadEnvFile(".env.local");

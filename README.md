@@ -56,7 +56,7 @@ The database needs to be a **replica set** for multi-document transactions. Mong
 - Forgot the password? Reset it from your computer (uses `.env.local`), which also lifts any lock:
 
 ```bash
-npx tsx scripts/reset-password.ts you@example.com "new-password"
+npx tsx scripts/reset-password.mts you@example.com "new-password"
 ```
 
 Failed sign-ins are logged on the server with a reason (`unknown-email` / `wrong-password`, never the password), visible in the Vercel runtime logs.

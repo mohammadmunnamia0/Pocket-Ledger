@@ -6,6 +6,7 @@ import { PageHeader, Section, TableSkeleton } from "@/components/common";
 import { Money } from "@/components/money";
 import { ConfirmButton } from "@/components/confirm-button";
 import { ThemeSwitcher } from "@/components/theme-provider";
+import { InstallAppCard } from "@/components/pwa";
 import { TransactionForm } from "@/components/transaction-form";
 import { AccountDialog, PasswordForm, RebuildLedgerButton } from "@/components/settings-forms";
 import { requireUser } from "@/lib/auth/session";
@@ -24,6 +25,9 @@ export default function SettingsPage() {
       <div className="space-y-5">
         <Section title="Appearance" description="Currency: Bangladeshi Taka (৳) · Timezone: Asia/Dhaka · Dates: DD MMM YYYY">
           <ThemeSwitcher />
+        </Section>
+        <Section title="Install app" description="Use PocketLedger from your home screen like a native app.">
+          <InstallAppCard />
         </Section>
         <Suspense fallback={<TableSkeleton rows={6} />}>
           <Accounts />

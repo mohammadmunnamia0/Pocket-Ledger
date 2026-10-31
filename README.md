@@ -20,6 +20,16 @@ A personal salary, expense and savings ledger in Bangladeshi Taka (৳). Each sa
 - **Import**: CSV import of historical salaries, expenses, breakdowns, bills and allocations, with a validated preview and atomic commit.
 - **Auth**: a single-user account with bcrypt password hashing and a signed HTTP-only session cookie. Every action and route re-verifies the session.
 
+## Install as an app (PWA)
+
+PocketLedger can be installed on your home screen and opens full-screen like a native app. It also has home-screen shortcuts for **Add expense**, **Transactions** and **Add salary**.
+
+- **Android (Chrome):** tap **Install app** in the header, or use ⋮ → *Install app*.
+- **iPhone / iPad (Safari):** tap **Install app** for step-by-step instructions (Share → *Add to Home Screen*).
+- **Desktop (Chrome / Edge):** use the install icon in the address bar.
+
+The service worker (`public/sw.js`) caches only content-hashed build assets and icons. Pages and financial data are always fetched live and never stored on the device. When there's no connection you get an offline page and a banner instead of stale balances. Icons are generated with `node scripts/generate-icons.mjs`.
+
 ## Getting started
 
 ```bash

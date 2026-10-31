@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { ActiveNav, Brand, NavList } from "@/components/app-shell/nav";
 import { MobileNav } from "@/components/app-shell/mobile-nav";
 import { QuickAdd } from "@/components/quick-add";
+import { InstallAppButton } from "@/components/pwa";
 import { requireUser } from "@/lib/auth/session";
 import { getLookups } from "@/lib/services/lookups";
 import { connectDB } from "@/lib/db/connect";
@@ -32,12 +33,13 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
       </aside>
 
       <div className="min-w-0">
-        <header className="sticky top-0 z-30 flex h-14 items-center gap-2 border-b bg-background/90 px-4 backdrop-blur supports-[backdrop-filter]:bg-background/75 sm:px-6">
+        <header className="sticky top-0 z-30 flex h-[calc(3.5rem+env(safe-area-inset-top))] items-center gap-2 border-b bg-background/90 px-4 pt-[env(safe-area-inset-top)] backdrop-blur supports-[backdrop-filter]:bg-background/75 sm:px-6">
           <MobileNav />
           <div className="lg:hidden">
             <Brand />
           </div>
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-2">
+            <InstallAppButton />
             <Suspense
               fallback={
                 <Button size="lg" disabled>
@@ -49,7 +51,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
             </Suspense>
           </div>
         </header>
-        <main className="mx-auto w-full max-w-6xl px-4 py-6 sm:px-6">{children}</main>
+        <main className="mx-auto w-full max-w-6xl px-4 pt-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] sm:px-6">{children}</main>
       </div>
     </div>
   );

@@ -13,7 +13,7 @@ export function MobileNav() {
       <SheetTrigger render={<Button variant="ghost" size="icon" className="lg:hidden" aria-label="Open menu" />}>
         <Menu />
       </SheetTrigger>
-      <SheetContent side="left" className="w-72 p-3">
+      <SheetContent side="left" className="w-72 p-3 pt-[calc(0.75rem+env(safe-area-inset-top))]">
         <SheetTitle className="sr-only">Navigation</SheetTitle>
         <div className="py-2">
           <Brand />

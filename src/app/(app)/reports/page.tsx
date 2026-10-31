@@ -7,6 +7,7 @@ import { EmptyState, PageHeader, Section, TableSkeleton } from "@/components/com
 import { Money } from "@/components/money";
 import { TxnList } from "@/components/txn-list";
 import { ReportFilters } from "@/components/report-filters";
+import { HelpButton } from "@/components/help";
 import { CategoryBarChart, DailySpendChart } from "@/components/charts";
 import { requireUser } from "@/lib/auth/session";
 import { getLookups } from "@/lib/services/lookups";
@@ -24,7 +25,7 @@ type SP = Record<string, string | string[] | undefined>;
 export default function ReportsPage({ searchParams }: PageProps<"/reports">) {
   return (
     <>
-      <PageHeader title="Monthly Reports" description="Generated from your transaction records — calendar months and salary cycles are reported independently." />
+      <PageHeader title="Monthly Reports" help="reports" description="Generated from your transaction records — calendar months and salary cycles are reported independently." />
       <Suspense fallback={<TableSkeleton rows={12} />}>
         <Reports searchParams={searchParams} />
       </Suspense>
@@ -51,6 +52,7 @@ async function Reports({ searchParams }: { searchParams: Promise<SP> }) {
         {tab("calendar", "Calendar month")}
         {tab("cycles", "Salary cycles")}
       </nav>
+      <HelpButton topic={view === "cycles" ? "salaryCycles" : "balanceSummary"} className="ml-1 align-middle" label="সাহায্য: Calendar month ও Salary cycles" />
       {view === "cycles" ? <CycleReport userId={user.id} /> : <CalendarReport userId={user.id} sp={sp} />}
     </>
   );
@@ -91,7 +93,7 @@ async function CalendarReport({ userId, sp }: { userId: string; sp: SP }) {
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_1.3fr]">
-        <Section title="Balance summary" description="Closing = opening + income − outflows. Balances ignore the filters.">
+        <Section title="Balance summary" help="balanceSummary" description="Closing = opening + income − outflows. Balances ignore the filters.">
           <table className="w-full text-sm">
             <tbody className="tabular">
               {lines.map(([label, value, cls]) => (

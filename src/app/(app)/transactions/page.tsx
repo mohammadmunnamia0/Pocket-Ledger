@@ -25,6 +25,7 @@ export default function TransactionsPage({ searchParams }: PageProps<"/transacti
     <>
       <PageHeader
         title="Transactions"
+        help="transactions"
         description="Every income, expense, transfer and savings move — with the running balance after each."
         actions={<Suspense fallback={null}><ExportLink searchParams={searchParams} /></Suspense>}
       />

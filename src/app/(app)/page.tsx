@@ -6,6 +6,7 @@ import { CardsSkeleton, EmptyState, Meter, PageHeader, Section, StatCard, TableS
 import { Money } from "@/components/money";
 import { TxnList } from "@/components/txn-list";
 import { AlertList } from "@/components/alert-list";
+import { HelpButton } from "@/components/help";
 import { CategoryBarChart, DailySpendChart, IncomeExpenseChart } from "@/components/charts";
 import { requireUser } from "@/lib/auth/session";
 import { getDashboard } from "@/lib/services/dashboard";
@@ -17,6 +18,7 @@ export default function DashboardPage() {
     <>
       <PageHeader
         title="Dashboard"
+        help="dashboard"
         description="Your money at a glance — every figure is calculated from your recorded transactions."
         actions={
           <ButtonLink href="/income" variant="outline">
@@ -49,6 +51,7 @@ async function Dashboard() {
       {d.alerts.length > 0 && (
         <Section
           title="Smart Financial Alerts"
+          help="smartAlerts"
           description="Based on your balance, commitments and spending"
           actions={
             <Link href="/alerts" className="text-xs text-muted-foreground hover:text-foreground">
@@ -62,7 +65,10 @@ async function Dashboard() {
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-[1.3fr_2fr]">
         <div className="rounded-xl border bg-card p-5">
-          <p className="text-xs font-medium text-muted-foreground">Remaining balance · {formatMonthLong(d.month)}</p>
+          <div className="flex items-center gap-1">
+            <p className="text-xs font-medium text-muted-foreground">Remaining balance · {formatMonthLong(d.month)}</p>
+            <HelpButton topic="balanceCard" className="size-5" />
+          </div>
           <p className="mt-1 text-3xl font-semibold tracking-tight">
             <Money value={m.remaining} tone="auto" />
           </p>
@@ -109,6 +115,7 @@ async function Dashboard() {
 
       <Section
         title="Salary carry-forward"
+        help="carryForward"
         description={
           s.cycle
             ? `Current cycle: ${s.cycle.label}, received ${formatDate(s.cycle.start)}. Expenses use the oldest salary first.`
@@ -168,21 +175,22 @@ async function Dashboard() {
       </Section>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <Section title="Daily spending" description={formatMonthLong(d.month)}>
+        <Section title="Daily spending" help="charts" description={formatMonthLong(d.month)}>
           {d.daily.some((x) => x.total > 0) ? <DailySpendChart data={d.daily} /> : <EmptyState title="No expenses yet this month" />}
         </Section>
-        <Section title="Spending by category" description={formatMonthLong(d.month)}>
+        <Section title="Spending by category" help="charts" description={formatMonthLong(d.month)}>
           {d.categories.length ? <CategoryBarChart data={d.categories} /> : <EmptyState title="No categorized spending yet" />}
         </Section>
       </div>
 
-      <Section title="Income vs. expenses" description="Last 6 months">
+      <Section title="Income vs. expenses" help="charts" description="Last 6 months">
         <IncomeExpenseChart data={d.series} />
       </Section>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Section
           title="Recent transactions"
+          help="transactions"
           actions={
             <Link href="/transactions" className="text-xs text-muted-foreground hover:text-foreground">
               View all
@@ -191,7 +199,7 @@ async function Dashboard() {
         >
           {d.recent.length ? <TxnList items={d.recent} /> : <EmptyState title="No transactions yet" description="Use Quick Add to record your first expense." />}
         </Section>
-        <Section title="Upcoming bills & pending payments">
+        <Section title="Upcoming bills & pending payments" help="upcomingBills">
           {d.upcoming.length === 0 && d.pending.length === 0 ? (
             <EmptyState title="Nothing due" description="Set up recurring bills to get reminders." action={<ButtonLink href="/bills" variant="outline">Utility bills</ButtonLink>} />
           ) : (
@@ -223,6 +231,7 @@ async function Dashboard() {
       {d.goals.length > 0 && (
         <Section
           title="Savings goals"
+          help="savings"
           actions={
             <Link href="/savings" className="text-xs text-muted-foreground hover:text-foreground">
               Manage

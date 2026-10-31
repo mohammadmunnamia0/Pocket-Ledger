@@ -11,7 +11,7 @@ export const metadata: Metadata = { title: "Alerts" };
 export default function AlertsPage() {
   return (
     <>
-      <PageHeader title="Alerts" description="Alert history and preferences. Alerts come from your real figures and appear once per period." />
+      <PageHeader title="Alerts" help="alerts" description="Alert history and preferences. Alerts come from your real figures and appear once per period." />
       <Suspense fallback={<TableSkeleton rows={8} />}>
         <Alerts />
       </Suspense>

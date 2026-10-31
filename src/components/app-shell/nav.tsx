@@ -18,21 +18,26 @@ import {
   Zap,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { HelpButton } from "@/components/help";
+import type { HelpKey } from "@/lib/help-content";
+
+/** Shown under the app name in the sidebar. */
+export const OWNER_EMAIL = "mohammadmunna4141@gmail.com";
 
 export const NAV_ITEMS = [
-  { href: "/", label: "Dashboard", icon: LayoutDashboard },
-  { href: "/transactions", label: "Transactions", icon: ArrowLeftRight },
-  { href: "/expenses/new", label: "Add Expense", icon: PlusCircle },
-  { href: "/income", label: "Income & Salary", icon: Wallet },
-  { href: "/categories", label: "Categories", icon: FolderTree },
-  { href: "/people", label: "Family & Allocations", icon: Users },
-  { href: "/bills", label: "Utility Bills", icon: Zap },
-  { href: "/savings", label: "Savings Goals", icon: PiggyBank },
-  { href: "/reports", label: "Monthly Reports", icon: BarChart3 },
-  { href: "/alerts", label: "Alerts", icon: Bell },
-  { href: "/import", label: "Import", icon: Upload },
-  { href: "/settings", label: "Settings", icon: Settings },
-] as const;
+  { href: "/", label: "Dashboard", icon: LayoutDashboard, help: "dashboard" },
+  { href: "/transactions", label: "Transactions", icon: ArrowLeftRight, help: "transactions" },
+  { href: "/expenses/new", label: "Add Expense", icon: PlusCircle, help: "addExpense" },
+  { href: "/income", label: "Income & Salary", icon: Wallet, help: "income" },
+  { href: "/categories", label: "Categories", icon: FolderTree, help: "categories" },
+  { href: "/people", label: "Family & Allocations", icon: Users, help: "people" },
+  { href: "/bills", label: "Utility Bills", icon: Zap, help: "bills" },
+  { href: "/savings", label: "Savings Goals", icon: PiggyBank, help: "savings" },
+  { href: "/reports", label: "Monthly Reports", icon: BarChart3, help: "reports" },
+  { href: "/alerts", label: "Alerts", icon: Bell, help: "alerts" },
+  { href: "/import", label: "Import", icon: Upload, help: "import" },
+  { href: "/settings", label: "Settings", icon: Settings, help: "settings" },
+] as const satisfies readonly { href: string; label: string; icon: unknown; help: HelpKey }[];
 
 function isActive(pathname: string | null, href: string) {
   if (!pathname) return false;
@@ -43,22 +48,29 @@ function isActive(pathname: string | null, href: string) {
 export function NavList({ active, onNavigate }: { active: string | null; onNavigate?: () => void }) {
   return (
     <nav aria-label="Main" className="grid gap-0.5">
-      {NAV_ITEMS.map(({ href, label, icon: Icon }) => {
+      {NAV_ITEMS.map(({ href, label, icon: Icon, help }) => {
         const on = isActive(active, href);
         return (
-          <Link
-            key={href}
-            href={href}
-            onClick={onNavigate}
-            aria-current={on ? "page" : undefined}
-            className={cn(
-              "flex items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
-              on && "bg-muted font-medium text-foreground",
-            )}
-          >
-            <Icon className={cn("size-4", on && "text-primary")} aria-hidden />
-            {label}
-          </Link>
+          <div key={href} className="group/nav flex items-center gap-0.5">
+            <Link
+              href={href}
+              onClick={onNavigate}
+              aria-current={on ? "page" : undefined}
+              className={cn(
+                "flex min-w-0 flex-1 items-center gap-2.5 rounded-lg px-2.5 py-2 text-sm text-muted-foreground transition-colors hover:bg-muted hover:text-foreground",
+                on && "bg-muted font-medium text-foreground",
+              )}
+            >
+              <Icon className={cn("size-4 shrink-0", on && "text-primary")} aria-hidden />
+              <span className="truncate">{label}</span>
+            </Link>
+            {/* Subtle until hovered on desktop; always visible (faint) on touch screens. */}
+            <HelpButton
+              topic={help}
+              label={`সাহায্য: ${label}`}
+              className="opacity-60 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/nav:opacity-100 [@media(hover:hover)]:focus-visible:opacity-100"
+            />
+          </div>
         );
       })}
     </nav>
@@ -69,13 +81,16 @@ export function ActiveNav({ onNavigate }: { onNavigate?: () => void }) {
   return <NavList active={usePathname()} onNavigate={onNavigate} />;
 }
 
-export function Brand() {
+export function Brand({ showEmail = false }: { showEmail?: boolean }) {
   return (
-    <Link href="/" className="flex items-center gap-2 px-2.5 font-semibold tracking-tight">
-      <span className="grid size-7 place-items-center rounded-lg bg-primary text-primary-foreground">
+    <Link href="/" className="flex min-w-0 items-center gap-2 px-2.5">
+      <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground">
         <HandCoins className="size-4" aria-hidden />
       </span>
-      PocketLedger
+      <span className="grid min-w-0 leading-tight">
+        <span className="font-semibold tracking-tight">PocketLedger</span>
+        {showEmail && <span className="truncate text-[11px] text-muted-foreground">{OWNER_EMAIL}</span>}
+      </span>
     </Link>
   );
 }

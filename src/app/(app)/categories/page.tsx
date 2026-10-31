@@ -11,7 +11,7 @@ export const metadata: Metadata = { title: "Categories" };
 export default function CategoriesPage() {
   return (
     <>
-      <PageHeader title="Categories" description="Create, rename, move and delete expense categories. Sub-categories roll up into their parent in reports." />
+      <PageHeader title="Categories" help="categories" description="Create, rename, move and delete expense categories. Sub-categories roll up into their parent in reports." />
       <Suspense fallback={<TableSkeleton rows={10} />}>
         <Categories />
       </Suspense>

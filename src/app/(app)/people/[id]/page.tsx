@@ -83,11 +83,11 @@ async function Person({ params }: { params: Promise<{ id: string }> }) {
         <StatCard label="Remaining" value={<Money value={totals.allocated - totals.paid} tone="auto" />} />
       </div>
 
-      <Section title="Record a payment" description="Creates an expense linked to this person. It is deducted from your balance and funded from your salaries.">
+      <Section title="Record a payment" help="people" description="Creates an expense linked to this person. It is deducted from your balance and funded from your salaries.">
         <PaymentForm personId={p.id} personName={p.name} months={allocations.map((a) => ({ month: a.month, remaining: a.remaining }))} />
       </Section>
 
-      <Section title="Monthly allocations" description="Budget commitments — they reserve money in alerts but never change your cash balance.">
+      <Section title="Monthly allocations" help="allocations" description="Budget commitments — they reserve money in alerts but never change your cash balance.">
         <AllocationForm personId={p.id} defaultAmount={p.monthlyAllocation} />
         {allocations.length > 0 && (
           <div className="mt-5 overflow-x-auto">

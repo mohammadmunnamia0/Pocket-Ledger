@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { CategoryOptions, Field, NativeSelect, type CategoryChoice } from "@/components/form-controls";
 import { useAction } from "@/components/use-action";
+import { HelpButton } from "@/components/help";
 import { createTransactionAction } from "@/app/actions/ledger";
 import { PAYMENT_METHODS, type PaymentMethod } from "@/lib/constants";
 import { PAYMENT_METHOD_LABELS } from "@/lib/labels";
@@ -83,7 +84,9 @@ export function QuickAdd({
       </DialogTrigger>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>Add expense</DialogTitle>
+          <DialogTitle className="flex items-center gap-1">
+            Add expense <HelpButton topic="quickAdd" />
+          </DialogTitle>
           <DialogDescription>Deducted from your balance using the oldest salary first.</DialogDescription>
         </DialogHeader>
         <form onSubmit={(e) => submit(e)} className="grid gap-4">

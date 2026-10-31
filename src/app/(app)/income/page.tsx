@@ -19,6 +19,7 @@ export default function IncomePage() {
     <>
       <PageHeader
         title="Income & Salary"
+        help="income"
         description="Each salary is tracked on its own. Expenses draw from the oldest salary with money left, and leftovers carry forward automatically."
       />
       <Suspense fallback={<TableSkeleton rows={10} />}>
@@ -52,11 +53,11 @@ async function IncomeView() {
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1fr_1.2fr]">
-        <Section title="Add salary or income" description="Use a past received date to record historical salaries — balances are recalculated automatically.">
+        <Section title="Add salary or income" help="income" description="Use a past received date to record historical salaries — balances are recalculated automatically.">
           <TransactionForm mode="income" lookups={ctx.lookups} defaults={{ ...ctx.defaults, incomeKind: "salary" }} />
         </Section>
 
-        <Section title="Salary records" description="Used and remaining amounts come from the FIFO funding ledger.">
+        <Section title="Salary records" help="salaryRecords" description="Used and remaining amounts come from the FIFO funding ledger.">
           {records.length === 0 ? (
             <EmptyState title="No income recorded yet" description="Add your first salary to start tracking." />
           ) : (

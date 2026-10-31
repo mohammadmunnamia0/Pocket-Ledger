@@ -157,3 +157,19 @@
     font-variant-numeric: tabular-nums;
   }
 }
+
+/* Native <select> dropdown lists are drawn by the OS. Tell it which theme is active and give
+   options explicit colors, otherwise dark-mode text is drawn on a white list and disappears. */
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+  .dark {
+    color-scheme: dark;
+  }
+  select option,
+  select optgroup {
+    background-color: var(--popover);
+    color: var(--popover-foreground);
+  }
+}

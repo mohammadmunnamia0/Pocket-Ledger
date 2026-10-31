@@ -7,6 +7,7 @@ import { ButtonLink } from "@/components/button-link";
 import { EmptyState, Meter, Section, StatCard, TableSkeleton } from "@/components/common";
 import { Money } from "@/components/money";
 import { DeleteTxnButton } from "@/components/txn-actions";
+import { HelpButton } from "@/components/help";
 import { requireUser } from "@/lib/auth/session";
 import { getSalaryFundingHistory } from "@/lib/services/salary";
 import { isObjectId } from "@/lib/db/models";
@@ -40,7 +41,10 @@ async function History({ params }: { params: Promise<{ id: string }> }) {
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">{r.label}</h1>
+          <div className="flex items-center gap-1.5">
+            <h1 className="text-xl font-semibold tracking-tight">{r.label}</h1>
+            <HelpButton topic="salaryFunding" />
+          </div>
           <p className="text-sm text-muted-foreground">Received {formatDate(r.date)}</p>
         </div>
         {r.type === "income" && (

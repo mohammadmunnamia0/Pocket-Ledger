@@ -21,12 +21,12 @@ export const metadata: Metadata = { title: "Settings" };
 export default function SettingsPage() {
   return (
     <>
-      <PageHeader title="Settings" description="Accounts, transfers, appearance and security." />
+      <PageHeader title="Settings" help="settings" description="Accounts, transfers, appearance and security." />
       <div className="space-y-5">
         <Section title="Appearance" description="Currency: Bangladeshi Taka (৳) · Timezone: Asia/Dhaka · Dates: DD MMM YYYY">
           <ThemeSwitcher />
         </Section>
-        <Section title="Install app" description="Use PocketLedger from your home screen like a native app.">
+        <Section title="Install app" help="installApp" description="Use PocketLedger from your home screen like a native app.">
           <InstallAppCard />
         </Section>
         <Suspense fallback={<TableSkeleton rows={6} />}>
@@ -35,7 +35,7 @@ export default function SettingsPage() {
         <Section title="Change password">
           <PasswordForm />
         </Section>
-        <Section title="Data integrity" description="Re-runs FIFO salary funding over your entire history and checks every balance. Safe to run any time.">
+        <Section title="Data integrity" help="dataIntegrity" description="Re-runs FIFO salary funding over your entire history and checks every balance. Safe to run any time.">
           <RebuildLedgerButton />
         </Section>
         <Section title="Session">
@@ -58,6 +58,7 @@ async function Accounts() {
     <>
       <Section
         title="Accounts"
+        help="accounts"
         description="Where your money physically sits. Balances move with income, expenses, transfers and linked savings — totals are never double counted."
         actions={
           <AccountDialog
@@ -130,7 +131,7 @@ async function Accounts() {
         </ul>
       </Section>
 
-      <Section title="Transfer between accounts" description="E.g. ATM withdrawal or bKash cash-in. Not counted as income or expense.">
+      <Section title="Transfer between accounts" help="accounts" description="E.g. ATM withdrawal or bKash cash-in. Not counted as income or expense.">
         <TransactionForm mode="transfer" lookups={ctx.lookups} defaults={ctx.defaults} />
       </Section>
     </>

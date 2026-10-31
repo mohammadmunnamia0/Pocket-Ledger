@@ -17,6 +17,7 @@ export default function PeoplePage() {
     <>
       <PageHeader
         title="Family & Allocations"
+        help="people"
         description="Allocations are commitments, not expenses — your balance only changes when a payment is made."
         actions={
           <PersonDialog

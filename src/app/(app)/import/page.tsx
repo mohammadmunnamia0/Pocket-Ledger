@@ -24,6 +24,7 @@ export default function ImportPage() {
     <>
       <PageHeader
         title="Import historical records"
+        help="import"
         description="Bring in salaries, expenses, breakdowns, bills and allocations from your notes. Everything is checked and previewed before saving."
       />
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-[1.6fr_1fr]">

@@ -12,6 +12,7 @@ export default function NewExpensePage() {
     <>
       <PageHeader
         title="Add expense"
+        help="addExpense"
         description="A simple expense, or one payment split into itemized breakdown. Use Quick Add in the top bar for the fastest entry."
       />
       <Suspense fallback={<TableSkeleton rows={8} />}>

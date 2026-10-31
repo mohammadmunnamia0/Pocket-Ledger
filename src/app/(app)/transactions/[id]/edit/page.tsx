@@ -15,6 +15,7 @@ export default function EditTransactionPage({ params }: PageProps<"/transactions
     <>
       <PageHeader
         title="Edit transaction"
+        help="transactionDetail"
         description="Saving recalculates balances, salary funding and reports for everything after this date."
       />
       <Suspense fallback={<TableSkeleton rows={8} />}>

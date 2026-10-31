@@ -16,7 +16,7 @@ export function MobileNav() {
       <SheetContent side="left" className="w-72 p-3 pt-[calc(0.75rem+env(safe-area-inset-top))]">
         <SheetTitle className="sr-only">Navigation</SheetTitle>
         <div className="py-2">
-          <Brand />
+          <Brand showEmail />
         </div>
         <Suspense fallback={<NavList active={null} />}>
           <ActiveNav onNavigate={() => setOpen(false)} />

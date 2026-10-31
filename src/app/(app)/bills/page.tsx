@@ -23,7 +23,7 @@ export const metadata: Metadata = { title: "Utility Bills" };
 export default function BillsPage() {
   return (
     <>
-      <PageHeader title="Utility Bills" description="Internet, electricity, gas and other bills — with recharge dates, coverage periods and reminders." />
+      <PageHeader title="Utility Bills" help="bills" description="Internet, electricity, gas and other bills — with recharge dates, coverage periods and reminders." />
       <Suspense fallback={<TableSkeleton rows={10} />}>
         <Bills />
       </Suspense>
@@ -68,7 +68,7 @@ async function Bills() {
       </div>
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <Section title="Upcoming & overdue" description="Recurring bills with nothing recorded for their billing month yet.">
+        <Section title="Upcoming & overdue" help="upcomingBills" description="Recurring bills with nothing recorded for their billing month yet.">
           {upcoming.length === 0 ? (
             <EmptyState title="All caught up" description={templates.length ? "Every recurring bill is recorded for its month." : "Add recurring bills to get reminders."} />
           ) : (
@@ -104,7 +104,7 @@ async function Bills() {
           )}
         </Section>
 
-        <Section title="Recurring bills">
+        <Section title="Recurring bills" help="recurringBills">
           {templates.length === 0 ? (
             <EmptyState title="No recurring bills" description="E.g. Internet ৳1,000 due on the 10th every month." />
           ) : (

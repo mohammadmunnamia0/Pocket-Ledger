@@ -2,12 +2,17 @@ import type { ReactNode } from "react";
 import { CircleCheck, Clock, Inbox } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Skeleton } from "@/components/ui/skeleton";
+import { HelpButton } from "@/components/help";
+import type { HelpKey } from "@/lib/help-content";
 
-export function PageHeader({ title, description, actions }: { title: string; description?: string; actions?: ReactNode }) {
+export function PageHeader({ title, description, actions, help }: { title: string; description?: string; actions?: ReactNode; help?: HelpKey }) {
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
       <div className="min-w-0">
-        <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+        <div className="flex items-center gap-1.5">
+          <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+          {help && <HelpButton topic={help} label={`সাহায্য: ${title}`} />}
+        </div>
         {description && <p className="mt-1 text-sm text-muted-foreground">{description}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
@@ -21,7 +26,9 @@ export function Section({
   actions,
   children,
   className,
+  help,
 }: {
+  help?: HelpKey;
   title?: ReactNode;
   description?: ReactNode;
   actions?: ReactNode;
@@ -33,7 +40,12 @@ export function Section({
       {(title || actions) && (
         <div className="mb-4 flex flex-wrap items-start justify-between gap-2">
           <div>
-            {title && <h2 className="text-sm font-semibold">{title}</h2>}
+            {title && (
+              <div className="flex items-center gap-1">
+                <h2 className="text-sm font-semibold">{title}</h2>
+                {help && <HelpButton topic={help} className="size-5" />}
+              </div>
+            )}
             {description && <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>}
           </div>
           {actions}

@@ -21,6 +21,7 @@ export default function SavingsPage({ searchParams }: PageProps<"/savings">) {
     <>
       <PageHeader
         title="Savings Goals"
+        help="savings"
         description="Set money aside for emergencies and plans. Savings are separate from spending and never moved automatically."
       />
       <Suspense fallback={<TableSkeleton rows={6} />}>

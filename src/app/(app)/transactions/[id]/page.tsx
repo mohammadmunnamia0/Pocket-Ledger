@@ -8,6 +8,7 @@ import { EmptyState, Section, StatusBadge, TableSkeleton } from "@/components/co
 import { Money } from "@/components/money";
 import { TxnAmount } from "@/components/txn-list";
 import { DeleteTxnButton, MarkPaidButton } from "@/components/txn-actions";
+import { HelpButton } from "@/components/help";
 import { requireUser } from "@/lib/auth/session";
 import { getTransactionDetail } from "@/lib/services/transactions";
 import { isObjectId } from "@/lib/db/models";
@@ -61,7 +62,10 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
     <div className="space-y-5">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+          <div className="flex items-center gap-1.5">
+            <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
+            <HelpButton topic="transactionDetail" />
+          </div>
           <div className="mt-1 flex items-center gap-3">
             <TxnAmount t={t} className="text-2xl font-semibold" />
             <StatusBadge status={t.status} />

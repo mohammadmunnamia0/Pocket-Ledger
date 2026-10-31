@@ -20,7 +20,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
     <div className="min-h-dvh lg:grid lg:grid-cols-[15rem_1fr]">
       <aside className="sticky top-0 hidden h-dvh flex-col gap-4 border-r bg-sidebar p-3 lg:flex">
         <div className="pt-2">
-          <Brand />
+          <Brand showEmail />
         </div>
         <div className="flex-1 overflow-y-auto">
           <Suspense fallback={<NavList active={null} />}>

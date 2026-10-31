@@ -1,9 +1,10 @@
 import type { Types } from "mongoose";
 import { connectDB } from "../db/connect";
-import { SavingsGoal, Transaction, oid, type TransactionDoc } from "../db/models";
+import { SavingsGoal, Transaction, oid } from "../db/models";
 import { addMonths, monthEnd, monthOf, monthStart, todayISO } from "../dates";
-import { categoryMap, categoryWithChildren, getLookups, type Lookups } from "./lookups";
+import { categoryWithChildren, getLookups, type Lookups } from "./lookups";
 import { SPENDABLE_DELTA_EXPR, toTxnDTO, type TxnDTO } from "./transactions";
+import { expenseLines, groupByCategory, summarizePeriod, type CategoryTotal, type ExpenseLine } from "../ledger/model";
 
 /**
  * Centralized financial calculations. Every figure here is derived from transaction
@@ -116,12 +117,8 @@ export async function getAccountBalances(userId: string): Promise<Map<string, nu
 
 /* ------------------------------------------------------------------ Period reports */
 
-export interface CategoryTotal {
-  id: string;
-  name: string;
-  total: number;
-  children: { id: string; name: string; total: number }[];
-}
+export type { CategoryTotal } from "../ledger/model";
+export { expenseLines, groupByCategory } from "../ledger/model";
 
 export interface PeriodReport {
   from: string;
@@ -156,54 +153,6 @@ export interface ReportFilters {
   status?: "paid" | "pending";
 }
 
-interface ExpenseLine {
-  categoryId: string | null;
-  amount: number;
-}
-
-/** Split an expense into reporting lines. Breakdown items replace the parent — never both. */
-export function expenseLines(t: Pick<TransactionDoc, "amount" | "categoryId" | "items">): ExpenseLine[] {
-  if (t.items && t.items.length > 0) {
-    return t.items.map((i) => ({
-      categoryId: (i.categoryId ?? t.categoryId)?.toString() ?? null,
-      amount: i.amount,
-    }));
-  }
-  return [{ categoryId: t.categoryId?.toString() ?? null, amount: t.amount }];
-}
-
-export function groupByCategory(lines: ExpenseLine[], lookups: Lookups): CategoryTotal[] {
-  const cats = categoryMap(lookups);
-  const roots = new Map<string, CategoryTotal>();
-  for (const line of lines) {
-    const cat = line.categoryId ? cats.get(line.categoryId) : undefined;
-    const rootId = cat?.rootId ?? "uncategorized";
-    const rootName = cat?.rootName ?? "Uncategorized";
-    let root = roots.get(rootId);
-    if (!root) {
-      root = { id: rootId, name: rootName, total: 0, children: [] };
-      roots.set(rootId, root);
-    }
-    root.total += line.amount;
-    if (cat && cat.parentId) {
-      let child = root.children.find((c) => c.id === cat.id);
-      if (!child) {
-        child = { id: cat.id, name: cat.name, total: 0 };
-        root.children.push(child);
-      }
-      child.total += line.amount;
-    }
-  }
-  const list = [...roots.values()].sort((a, b) => b.total - a.total);
-  for (const r of list) r.children.sort((a, b) => b.total - a.total);
-  return list;
-}
-
-function isInvestment(t: Pick<TransactionDoc, "categoryId">, lookups: Lookups): boolean {
-  if (!t.categoryId) return false;
-  return categoryMap(lookups).get(t.categoryId.toString())?.nature === "saving";
-}
-
 export async function openingBalance(userId: string, beforeDate: string): Promise<number> {
   const [res] = await Transaction.aggregate<{ v: number }>([
     { $match: { userId: oid(userId), status: "paid", date: { $lt: beforeDate } } },
@@ -228,39 +177,12 @@ export async function getPeriodReport(
     Transaction.find({ userId: uid, date: { $gte: from, $lte: to } }).sort({ date: 1, createdAt: 1 }).lean(),
   ]);
 
-  let salary = 0, additionalIncome = 0, broughtIn = 0, expenses = 0, investments = 0;
-  let savingsDeposits = 0, savingsWithdrawals = 0, pendingTotal = 0;
-  const daily = new Map<string, number>();
-
-  for (const t of txns) {
-    if (t.status === "pending") {
-      pendingTotal += t.amount;
-      continue;
-    }
-    switch (t.type) {
-      case "income":
-        if (t.income?.kind === "salary") salary += t.amount;
-        else if (t.income?.kind === "opening") broughtIn += t.amount;
-        else additionalIncome += t.amount;
-        break;
-      case "expense":
-        if (isInvestment(t, lk)) investments += t.amount;
-        else expenses += t.amount;
-        daily.set(t.date, (daily.get(t.date) ?? 0) + t.amount);
-        break;
-      case "savings_deposit":
-        savingsDeposits += t.amount;
-        break;
-      case "savings_withdrawal":
-        savingsWithdrawals += t.amount;
-        break;
-    }
-  }
-
-  const totalIncome = salary + additionalIncome;
-  const totalAvailable = opening + totalIncome + broughtIn;
-  const savingsAndTransfers = investments + savingsDeposits - savingsWithdrawals;
-  const totalOutflows = expenses + savingsAndTransfers;
+  // Same totals code as the offline app (lib/ledger/model.ts).
+  const totals = summarizePeriod(
+    opening,
+    txns.map((t) => ({ ...t, incomeKind: t.income?.kind ?? null })),
+    lk,
+  );
 
   // Category breakdown and listed transactions honour the filters; balances above never do.
   let spendSource = txns;
@@ -290,25 +212,13 @@ export async function getPeriodReport(
     listed.push(t);
   }
 
+  const { daily, ...figures } = totals;
   return {
     from,
     to,
-    openingBalance: opening,
-    salary,
-    additionalIncome,
-    broughtIn,
-    totalIncome,
-    totalAvailable,
-    expenses,
-    investments,
-    savingsDeposits,
-    savingsWithdrawals,
-    savingsAndTransfers,
-    totalOutflows,
-    closingBalance: totalAvailable - totalOutflows,
-    pendingTotal,
+    ...figures,
     categories: groupByCategory(lines, lk),
-    daily: [...daily.entries()].map(([date, total]) => ({ date, total })),
+    daily,
     transactions: listed.map((t) => toTxnDTO(t, lk)),
   };
 }

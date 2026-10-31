@@ -87,6 +87,21 @@ export function ServiceWorkerRegister() {
     navigator.serviceWorker.register("/sw.js", { scope: "/", updateViaCache: "none" }).catch((err) => {
       console.warn("Service worker registration failed", err);
     });
+    // Keep the cached offline app in step with the deployed version (at most every 10 min).
+    if (navigator.onLine && !location.pathname.startsWith("/offline")) {
+      let last = 0;
+      try {
+        last = Number(sessionStorage.getItem("pl-shell-cached") ?? 0);
+      } catch {}
+      if (Date.now() - last > 10 * 60_000) {
+        navigator.serviceWorker.ready.then((reg) => {
+          reg.active?.postMessage({ type: "CACHE_SHELL" });
+          try {
+            sessionStorage.setItem("pl-shell-cached", String(Date.now()));
+          } catch {}
+        });
+      }
+    }
   }, []);
   return null;
 }
@@ -107,7 +122,7 @@ export function OfflineBanner() {
   if (!offline) return null;
   return (
     <div role="status" className="fixed inset-x-0 bottom-0 z-50 flex items-center justify-center gap-2 bg-foreground px-4 pt-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] text-xs text-background">
-      <WifiOff className="size-3.5" aria-hidden /> You&apos;re offline — new entries can&apos;t be saved until you reconnect.
+      <WifiOff className="size-3.5" aria-hidden /> You&apos;re offline — changes are saved on this device and sync when you reconnect.
     </div>
   );
 }

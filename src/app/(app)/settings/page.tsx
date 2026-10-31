@@ -14,7 +14,8 @@ import { getFormContext } from "@/lib/services/forms";
 import { getAccountBalances } from "@/lib/services/finance";
 import { ACCOUNT_KIND_LABELS } from "@/lib/labels";
 import { archiveAccountAction, deleteAccountAction, setDefaultAccountAction } from "@/app/actions/ledger";
-import { logoutAction } from "@/app/actions/auth";
+import { SignOutButton } from "@/components/sync/sign-out-button";
+import { OfflineSyncCard } from "@/components/sync/offline-sync-card";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -29,6 +30,9 @@ export default function SettingsPage() {
         <Section title="Install app" help="installApp" description="Use PocketLedger from your home screen like a native app.">
           <InstallAppCard />
         </Section>
+        <Section title="Offline & sync" help="offlineSync" description="Your records are kept on this device so the app works without internet.">
+          <OfflineSyncCard />
+        </Section>
         <Suspense fallback={<TableSkeleton rows={6} />}>
           <Accounts />
         </Suspense>
@@ -39,11 +43,9 @@ export default function SettingsPage() {
           <RebuildLedgerButton />
         </Section>
         <Section title="Session">
-          <form action={logoutAction}>
-            <Button type="submit" variant="outline">
-              <LogOut /> Sign out
-            </Button>
-          </form>
+          <SignOutButton>
+            <LogOut /> Sign out
+          </SignOutButton>
         </Section>
       </div>
     </>

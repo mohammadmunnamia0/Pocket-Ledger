@@ -152,7 +152,7 @@ async function TransactionsView({ searchParams }: { searchParams: Promise<SP> })
                             <Pencil />
                           </ButtonLink>
                         )}
-                        <DeleteTxnButton id={t.id} title={t.incomeLabel || t.title} iconOnly />
+                        <DeleteTxnButton id={t.id} title={t.incomeLabel || t.title} updatedAt={t.updatedAt} iconOnly />
                       </div>
                     </td>
                   </tr>

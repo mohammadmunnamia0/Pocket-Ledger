@@ -6,33 +6,16 @@ import {
   Transaction,
   User,
   oid,
-  type TxnStatus,
-  type TxnType,
 } from "../db/models";
 import { allocateFifo, type FundingConsumer, type FundingSource } from "./fifo";
 import { InsufficientFundsError } from "../errors";
 import { formatDate } from "../dates";
 import { formatTaka } from "../money";
-
-/** Money arriving into the spendable pool. */
-export const SOURCE_TYPES: TxnType[] = ["income", "savings_withdrawal"];
-/** Money leaving the spendable pool. */
-export const CONSUMER_TYPES: TxnType[] = ["expense", "savings_deposit"];
+import { CONSUMER_TYPES, SOURCE_TYPES, affectsFunding, isConsumer, isSource } from "./model";
+export { CONSUMER_TYPES, SOURCE_TYPES, affectsFunding, isConsumer, isSource };
 
 /** Earliest possible date: recomputing from here rebuilds the whole funding ledger. */
 export const LEDGER_START = "0000-01-01";
-
-export function isSource(t: { type: TxnType; status: TxnStatus }): boolean {
-  return t.status === "paid" && SOURCE_TYPES.includes(t.type);
-}
-
-export function isConsumer(t: { type: TxnType; status: TxnStatus }): boolean {
-  return t.status === "paid" && CONSUMER_TYPES.includes(t.type);
-}
-
-export function affectsFunding(t: { type: TxnType; status: TxnStatus }): boolean {
-  return isSource(t) || isConsumer(t);
-}
 
 /**
  * Run `fn` inside a MongoDB transaction that also bumps the user's ledgerVersion.

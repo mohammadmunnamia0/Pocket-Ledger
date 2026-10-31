@@ -409,3 +409,113 @@ describe("historical import", () => {
     expect(await Transaction.countDocuments({ userId })).toBe(0);
   });
 });
+
+describe("offline copy uses identical calculations", () => {
+  it("the shared model on the device snapshot reproduces every server figure", async () => {
+    const { todayISO, addDays, monthOf } = await import("@/lib/dates");
+    const { getSnapshot } = await import("@/lib/services/sync");
+    const { getDashboard } = await import("@/lib/services/dashboard");
+    const { computeDashboardFigures, computeAllocations, runningBalances } = await import("@/lib/ledger/model");
+    const { FundingAllocation } = await import("@/lib/db/models");
+    const today = todayISO();
+    const d = (n: number) => addDays(today, -n);
+    const lookups = await getLookups(userId);
+    const cat = (label: string) => lookups.categories.find((c) => c.label === label)!.id;
+
+    await createTransaction(userId, { type: "income", title: "Opening", amount: "1500", date: d(70), incomeKind: "opening" });
+    await salary(20000, d(60), "Older Salary");
+    await expense("Rent", 9000, d(55), { categoryId: cat("Family & Household") });
+    await salary(20000, d(30), "Previous Salary");
+    await createTransaction(userId, {
+      type: "expense", title: "Market", date: d(28), categoryId: cat("Food & Groceries"),
+      items: [{ name: "Fish", amount: "800", categoryId: cat("Food & Groceries › Fish") }, { name: "Bus", amount: "200", categoryId: cat("Transport") }],
+    });
+    await expense("Investment", 5570, d(25), { categoryId: cat("Investment & Savings › Investment") });
+    const person = await savePerson(userId, { name: "Suraiya" });
+    await saveAllocation(userId, { personId: person, month: monthOf(d(20)), amount: "2500" });
+    await recordPersonPayment(userId, { personId: person, amount: "1000", date: d(20), month: monthOf(d(20)) });
+    await salary(20000, d(10), "Latest Salary");
+    await createTransaction(userId, { type: "income", title: "Bonus", amount: "3000", date: d(8), incomeKind: "bonus" });
+    const goal = await saveGoal(userId, { name: "Medical", kind: "medical", targetAmount: "30000", priority: "high" });
+    await moveSavings(userId, { goalId: goal, direction: "deposit", amount: "2000", date: d(5) });
+    await expense("Internet", 1000, d(3), { status: "pending" });
+    await expense("Tea", 30, today);
+
+    const snap = await getSnapshot(userId);
+    const device = computeDashboardFigures({
+      txns: snap.transactions,
+      lookups: snap.lookups,
+      persons: snap.lookups.persons,
+      personAllocations: snap.personAllocations,
+      today,
+    });
+    const server = await getDashboard(userId);
+
+    expect(device.period).toEqual(server.period);
+    expect(device.metrics).toEqual(server.metrics);
+    expect(device.borrowed).toEqual(server.borrowed);
+    expect(device.salaryBreakdown).toEqual(server.salary.breakdown);
+    expect(server.period).toMatchObject({ label: "Latest Salary", otherIncome: tk(3000) });
+
+    // FIFO derived on the device equals the funding ledger stored on the server.
+    const key = (a: { consumerId: string; sourceId: string; amount: number }) => `${a.consumerId}>${a.sourceId}:${a.amount}`;
+    const stored = (await FundingAllocation.find({ userId }).lean()).map((a) => key({ consumerId: a.consumerId.toString(), sourceId: a.sourceId.toString(), amount: a.amount }));
+    expect(computeAllocations(snap.transactions).allocations.map(key).sort()).toEqual(stored.sort());
+
+    // Running balances match the server's transaction history.
+    const list = await listTransactions(userId, { pageSize: 200 });
+    const balances = runningBalances(snap.transactions);
+    for (const row of list.rows) expect(balances.get(row.id)).toBe(row.runningBalance);
+  });
+});
+
+describe("offline sync", () => {
+  const payload = (title: string, amount: string, date: string) => ({ type: "expense" as const, title, amount, date });
+
+  it("never duplicates on retries, protects newer data, and keeps rejected changes retryable", async () => {
+    const { applyOperation } = await import("@/lib/services/sync");
+    await salary(5000, "2027-01-01");
+
+    // Same op replayed, and the same new record sent under a different op id → one record.
+    const c1 = await applyOperation(userId, { opId: "op-create-0001", kind: "create", clientRef: "dev-ref-0001", payload: payload("Tea", "50", "2027-01-02") });
+    const c2 = await applyOperation(userId, { opId: "op-create-0001", kind: "create", clientRef: "dev-ref-0001", payload: payload("Tea", "50", "2027-01-02") });
+    const c3 = await applyOperation(userId, { opId: "op-create-0002", kind: "create", clientRef: "dev-ref-0001", payload: payload("Tea", "50", "2027-01-02") });
+    expect(c1.status).toBe("applied");
+    expect(c2).toEqual(c1);
+    expect(c3).toMatchObject({ status: "applied", txnId: (c1 as { txnId: string }).txnId });
+    expect(await Transaction.countDocuments({ userId, title: "Tea" })).toBe(1);
+
+    const id = (c1 as { txnId: string }).txnId;
+    const base = (await getTransactionDetail(userId, id))!.txn.updatedAt;
+
+    // Edited on "another device" → the offline edit made from the old version is a conflict.
+    await updateTransaction(userId, id, payload("Tea (other device)", "60", "2027-01-02"));
+    const stale = await applyOperation(userId, { opId: "op-update-001", kind: "update", txnId: id, baseUpdatedAt: base, payload: payload("Tea", "70", "2027-01-02") });
+    expect(stale.status).toBe("conflict");
+    expect((await getTransactionDetail(userId, id))!.txn.title).toBe("Tea (other device)");
+
+    // "Keep mine" forces it; replaying the forced op is recognised and changes nothing.
+    const forced = await applyOperation(userId, { opId: "op-update-002", kind: "update", txnId: id, baseUpdatedAt: base, payload: payload("Tea", "70", "2027-01-02"), force: true });
+    expect(forced.status).toBe("applied");
+    await import("@/lib/db/models").then(({ SyncOp }) => SyncOp.deleteOne({ userId, opId: "op-update-002" })); // simulate a lost confirmation
+    const replay = await applyOperation(userId, { opId: "op-update-002", kind: "update", txnId: id, baseUpdatedAt: base, payload: payload("Tea", "70", "2027-01-02") });
+    expect(replay.status).toBe("applied");
+    expect((await getTransactionDetail(userId, id))!.txn.amount).toBe(tk(70));
+
+    // Deletes: stale → conflict; current → applied; repeated → still applied.
+    expect((await applyOperation(userId, { opId: "op-delete-001", kind: "delete", txnId: id, baseUpdatedAt: base })).status).toBe("conflict");
+    const fresh = (await getTransactionDetail(userId, id))!.txn.updatedAt;
+    expect((await applyOperation(userId, { opId: "op-delete-002", kind: "delete", txnId: id, baseUpdatedAt: fresh })).status).toBe("applied");
+    expect((await applyOperation(userId, { opId: "op-delete-003", kind: "delete", txnId: id, baseUpdatedAt: fresh })).status).toBe("applied");
+    expect(await Transaction.countDocuments({ userId, title: "Tea" })).toBe(0);
+
+    // Not enough money → rejected, nothing saved, and the same op succeeds once income exists.
+    const big = { opId: "op-create-big1", kind: "create" as const, clientRef: "dev-ref-big1", payload: payload("Phone", "9000", "2027-01-05") };
+    expect(await applyOperation(userId, big)).toMatchObject({ status: "rejected" });
+    expect(await Transaction.countDocuments({ userId, title: "Phone" })).toBe(0);
+    await salary(20000, "2027-01-04");
+    expect(await applyOperation(userId, big)).toMatchObject({ status: "applied" });
+    expect(await Transaction.countDocuments({ userId, title: "Phone" })).toBe(1);
+    await expectIntegrity();
+  });
+});

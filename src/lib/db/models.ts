@@ -272,6 +272,10 @@ export interface TransactionDoc {
   /** Manual FIFO override: draw from this income first. */
   fundingSourceId?: Types.ObjectId | null;
   importBatch?: string | null;
+  /** Device-generated id of an offline-created record — prevents duplicates on re-sync. */
+  clientRef?: string | null;
+  /** Last offline sync operation applied to this record (makes update retries idempotent). */
+  lastOpId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -319,10 +323,13 @@ const TransactionSchema = new Schema<TransactionDoc>(
     },
     fundingSourceId: { type: Schema.Types.ObjectId, default: null },
     importBatch: { type: String, default: null },
+    clientRef: { type: String, default: null },
+    lastOpId: { type: String, default: null },
   },
   { timestamps: true },
 );
 TransactionSchema.index({ userId: 1, date: 1, createdAt: 1 });
+TransactionSchema.index({ userId: 1, clientRef: 1 }, { unique: true, partialFilterExpression: { clientRef: { $type: "string" } } });
 TransactionSchema.index({ userId: 1, type: 1, status: 1, date: 1 });
 TransactionSchema.index({ userId: 1, attributionMonth: 1 });
 TransactionSchema.index({ userId: 1, categoryId: 1 });
@@ -472,6 +479,26 @@ const LoginAttemptSchema = new Schema<LoginAttemptDoc>({
   expiresAt: { type: Date, required: true, index: { expireAfterSeconds: 0 } },
 });
 
+/* ------------------------------------------------------------------ Offline sync log */
+
+/** Results of offline operations the server has applied — replaying an opId returns the same result. */
+export interface SyncOpDoc {
+  _id: Types.ObjectId;
+  userId: Types.ObjectId;
+  opId: string;
+  result: Record<string, unknown>;
+  createdAt: Date;
+}
+
+const SyncOpSchema = new Schema<SyncOpDoc>({
+  userId: { type: Schema.Types.ObjectId, required: true },
+  opId: { type: String, required: true },
+  result: { type: Schema.Types.Mixed, required: true },
+  // Kept for 180 days — far longer than any device stays offline.
+  createdAt: { type: Date, default: () => new Date(), index: { expireAfterSeconds: 180 * 24 * 3600 } },
+});
+SyncOpSchema.index({ userId: 1, opId: 1 }, { unique: true });
+
 /* ------------------------------------------------------------------ Exports */
 
 export const User = getModel<UserDoc>("User", UserSchema);
@@ -486,6 +513,7 @@ export const AllocationAudit = getModel<AllocationAuditDoc>("AllocationAudit", A
 export const RecurringBill = getModel<RecurringBillDoc>("RecurringBill", RecurringBillSchema);
 export const AlertState = getModel<AlertStateDoc>("AlertState", AlertStateSchema);
 export const LoginAttempt = getModel<LoginAttemptDoc>("LoginAttempt", LoginAttemptSchema);
+export const SyncOp = getModel<SyncOpDoc>("SyncOp", SyncOpSchema);
 
 export function oid(id: string | Types.ObjectId): Types.ObjectId {
   return typeof id === "string" ? new Types.ObjectId(id) : id;

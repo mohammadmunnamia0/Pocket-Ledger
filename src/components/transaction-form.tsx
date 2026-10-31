@@ -16,6 +16,8 @@ import { formatTaka, parseTaka, toInputValue } from "@/lib/money";
 import { formatDate, formatMonthLong } from "@/lib/dates";
 import type { TxnDTO } from "@/lib/services/transactions";
 import type { TxnInputRaw } from "@/lib/validation";
+import type { ActionResult } from "@/lib/errors";
+import { offlineCreate, offlineUpdate, saveWithFallback } from "@/lib/offline/hooks";
 
 export interface FormLookups {
   categories: CategoryChoice[];
@@ -51,6 +53,7 @@ export function TransactionForm({
   initial,
   redirectTo,
   onDone,
+  onSave,
 }: {
   mode: "expense" | "income" | "transfer";
   lookups: FormLookups;
@@ -58,6 +61,8 @@ export function TransactionForm({
   initial?: TxnDTO;
   redirectTo?: string;
   onDone?: () => void;
+  /** Replace how the entry is saved (the offline app queues every change on the device). */
+  onSave?: (payload: TxnInputRaw) => Promise<ActionResult<unknown>>;
 }) {
   const router = useRouter();
   const { pending, run } = useAction();
@@ -143,7 +148,14 @@ export function TransactionForm({
     if (mode === "transfer") Object.assign(payload, { toAccountId: toAccountId || undefined, title: title || "Transfer between accounts" });
 
     setErrors({});
-    run<unknown>(() => (initial ? updateTransactionAction(initial.id, payload) : createTransactionAction(payload)), {
+    const save = onSave
+      ? () => onSave(payload)
+      : () =>
+          saveWithFallback(
+            () => (initial ? updateTransactionAction(initial.id, payload) : createTransactionAction(payload)),
+            () => (initial ? offlineUpdate(initial, payload) : offlineCreate(payload)),
+          );
+    run<unknown>(save, {
       onSuccess: () => {
         if (onDone) onDone();
         else if (redirectTo) router.push(redirectTo);

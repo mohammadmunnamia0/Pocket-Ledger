@@ -1,24 +1,55 @@
 /*
  * PocketLedger service worker.
  *
- * Deliberately conservative for a finance app:
- *  - Pages and data (HTML, RSC payloads, server actions, API) are NEVER cached, so balances
- *    are always fresh and no financial data is stored on the device.
- *  - Content-hashed build assets (/_next/static) and icons are cached for fast launches.
- *  - When a page can't load because the device is offline, a cached offline page is shown.
+ *  - The offline app (/offline) and every asset it needs are precached, so the app opens
+ *    with no connection — in the browser and as an installed app. The offline app reads the
+ *    ledger from IndexedDB; this worker never caches financial pages or API data.
+ *  - Online, pages always come from the network. When the network is unavailable, any page
+ *    opens the offline app at the matching screen (/offline?from=<page>).
+ *  - Content-hashed build assets are cached as they are used (cache-first).
+ *  - The page asks the worker to refresh the offline app after each online visit
+ *    ({type: "CACHE_SHELL"}), so it always matches the latest deployment.
  */
-const VERSION = "v1";
+const VERSION = "v2";
 const STATIC_CACHE = `pl-static-${VERSION}`;
-const OFFLINE_URL = "/offline";
-const PRECACHE = [OFFLINE_URL, "/icons/icon-192.png", "/icons/icon-512.png", "/manifest.webmanifest"];
+const SHELL_URL = "/offline";
+const ALWAYS = ["/manifest.webmanifest", "/icons/icon-192.png", "/icons/icon-512.png", "/apple-icon.png", "/icon.png"];
+
+/** Every /_next/static asset referenced by a document or stylesheet. */
+function assetUrls(text) {
+  const found = new Set();
+  const cleaned = text.replace(/\\\//g, "/");
+  const re = /(?:\/_next\/)?static\/(?:chunks|css|media)\/[A-Za-z0-9_\-./~%@]+?\.(?:js|css|woff2?|ttf|png|svg|jpg|webp)/g;
+  for (const m of cleaned.matchAll(re)) found.add(m[0].startsWith("/_next/") ? m[0] : `/_next/${m[0]}`);
+  return [...found];
+}
+
+async function cacheShell() {
+  const cache = await caches.open(STATIC_CACHE);
+  const res = await fetch(SHELL_URL, { cache: "no-store", credentials: "same-origin" });
+  if (!res.ok) return;
+  const html = await res.clone().text();
+  await cache.put(SHELL_URL, res);
+  const assets = assetUrls(html);
+  // Fonts are referenced from the stylesheets, not the HTML.
+  for (const css of assets.filter((u) => u.endsWith(".css"))) {
+    try {
+      const r = await fetch(css);
+      if (r.ok) {
+        await cache.put(css, r.clone());
+        for (const u of assetUrls(await r.text())) assets.push(u);
+      }
+    } catch {
+      /* next visit will retry */
+    }
+  }
+  const missing = [];
+  for (const u of new Set(assets)) if (!(await cache.match(u))) missing.push(u);
+  await Promise.allSettled([...ALWAYS, ...missing].map((u) => cache.add(new Request(u, { cache: "reload" }))));
+}
 
 self.addEventListener("install", (event) => {
-  event.waitUntil(
-    caches
-      .open(STATIC_CACHE)
-      .then((cache) => cache.addAll(PRECACHE.map((url) => new Request(url, { cache: "reload" }))))
-      .then(() => self.skipWaiting()),
-  );
+  event.waitUntil(cacheShell().catch(() => undefined).then(() => self.skipWaiting()));
 });
 
 self.addEventListener("activate", (event) => {
@@ -30,25 +61,36 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+self.addEventListener("message", (event) => {
+  if (event.data && event.data.type === "CACHE_SHELL") event.waitUntil(cacheShell().catch(() => undefined));
+});
+
 function isStaticAsset(url) {
   return url.pathname.startsWith("/_next/static/") || url.pathname.startsWith("/icons/") || /\.(?:png|svg|ico|woff2?)$/.test(url.pathname);
+}
+
+async function shellResponse() {
+  return (await caches.match(SHELL_URL, { ignoreSearch: true })) || Response.error();
 }
 
 self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin) return;
+  if (url.origin !== self.location.origin || url.pathname.startsWith("/api/")) return;
 
-  // Page loads: always from the network; offline page only when the network is unreachable.
   if (request.mode === "navigate") {
     event.respondWith(
-      fetch(request).catch(async () => (await caches.match(OFFLINE_URL)) || Response.error()),
+      fetch(request).catch(async () => {
+        // No connection: open the offline app at the screen the user asked for.
+        if (url.pathname === SHELL_URL) return shellResponse();
+        const from = url.pathname + url.search;
+        return Response.redirect(`${SHELL_URL}?from=${encodeURIComponent(from)}`, 302);
+      }),
     );
     return;
   }
 
-  // Immutable build assets and icons: cache-first, filled as they are used.
   if (isStaticAsset(url)) {
     event.respondWith(
       caches.match(request).then(
@@ -64,5 +106,4 @@ self.addEventListener("fetch", (event) => {
       ),
     );
   }
-  // Everything else (RSC data, API, server actions) goes straight to the network.
 });

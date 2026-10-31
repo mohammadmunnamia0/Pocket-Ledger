@@ -1,72 +1,54 @@
 import { connectDB } from "../db/connect";
-import { Transaction, oid } from "../db/models";
+import { FundingAllocation, Person, PersonAllocation, Transaction, oid } from "../db/models";
 import { addDays, monthOf, monthStart, todayISO } from "../dates";
-import { expenseLines, getBalanceSummary, getMonthlySeries, getPeriodReport } from "./finance";
-import { currentCycle, getFundingSources, getSalaryCycles } from "./salary";
+import { computeDashboardFigures } from "../ledger/model";
+import { getLookups } from "./lookups";
+import { getMonthlySeries, getPeriodReport } from "./finance";
 import { getUpcomingBills } from "./bills";
 import { listGoals } from "./savings";
 import { listTransactions, toTxnDTO } from "./transactions";
-import { getPersonDetail, listPeople } from "./people";
-import { categoryMap, getLookups, type Lookups } from "./lookups";
 
 /**
  * Everything the dashboard shows, computed from database records in one pass.
  *
- * The month figures run from the 1st up to today, so they always add up exactly to the
- * money available right now:
- *   available now = carried forward + income this month − spent − saved/invested
+ * The salary-period figures, balances, savings and borrowed money come from
+ * computeDashboardFigures (lib/ledger/model.ts) — the very same function the offline app
+ * runs on its IndexedDB copy — fed here with the stored FIFO funding ledger.
  * (Smart alerts live in the notification bell — see alert-feed.ts.)
  */
 export async function getDashboard(userId: string) {
   await connectDB();
+  const uid = oid(userId);
   const today = todayISO();
   const month = monthOf(today);
 
   const lookups = await getLookups(userId);
-  const [balance, mtd, cycles, sources, series, upcoming, recent, pendingDocs, goals, invested, borrowed] = await Promise.all([
-    getBalanceSummary(userId, today),
+  const [allTxns, allocations, persons, personAllocations, mtd, series, upcoming, recent, pendingDocs, goals] = await Promise.all([
+    Transaction.find({ userId: uid }).lean(),
+    FundingAllocation.find({ userId: uid }, { consumerId: 1, sourceId: 1, amount: 1, consumerDate: 1 }).lean(),
+    Person.find({ userId: uid }, { name: 1 }).lean(),
+    PersonAllocation.find({ userId: uid }, { personId: 1, month: 1, amount: 1, note: 1 }).lean(),
     getPeriodReport(userId, monthStart(month), today, {}, lookups),
-    getSalaryCycles(userId),
-    getFundingSources(userId),
     getMonthlySeries(userId, month, 6),
     getUpcomingBills(userId, today),
     listTransactions(userId, { pageSize: 8 }, lookups),
-    Transaction.find({ userId: oid(userId), status: "pending" }).sort({ date: 1 }).limit(8).lean(),
+    Transaction.find({ userId: uid, status: "pending" }).sort({ date: 1 }).limit(8).lean(),
     listGoals(userId, today),
-    getInvestedTotal(userId, lookups),
-    getBorrowedOverview(userId),
   ]);
 
-  // Salary overview from the FIFO funding ledger.
-  const cycle = currentCycle(cycles, today);
-  const salaryIdx = cycle ? sources.findIndex((s) => s.id === cycle.salaryId) : -1;
-  const currentSalary = salaryIdx >= 0 ? sources[salaryIdx] : null;
-  const salaryBreakdown = sources
-    .filter((s) => s.kind === "salary" || s.remaining > 0)
-    .slice(-6)
-    .reverse();
-
-  // The current salary period, from the day the latest salary arrived up to today. Built from
-  // the same records as the Transactions list, so it adds up exactly to the money in hand:
-  //   carried in + salary + other income − spends = remaining.
-  const pr = cycle ? await getPeriodReport(userId, cycle.start, today, {}, lookups) : null;
-  const period =
-    cycle && pr
-      ? {
-          salaryId: cycle.salaryId,
-          label: cycle.label,
-          receivedOn: cycle.start,
-          carriedIn: pr.openingBalance,
-          carriedFrom: cycle.carriedFrom,
-          salary: pr.salary,
-          otherIncome: pr.additionalIncome + pr.broughtIn,
-          totalAvailable: pr.openingBalance + pr.salary + pr.additionalIncome + pr.broughtIn,
-          spends: pr.totalOutflows,
-          savedOrInvested: pr.savingsAndTransfers,
-          paymentCount: pr.transactions.filter((t) => t.status === "paid" && (t.type === "expense" || t.type === "savings_deposit")).length,
-          remaining: pr.closingBalance,
-        }
-      : null;
+  const figures = computeDashboardFigures({
+    txns: allTxns.map((t) => toTxnDTO(t, lookups)),
+    lookups,
+    persons: persons.map((p) => ({ id: p._id.toString(), name: p.name })),
+    personAllocations: personAllocations.map((a) => ({ personId: a.personId.toString(), month: a.month, amount: a.amount, note: a.note ?? null })),
+    allocations: allocations.map((a) => ({
+      consumerId: a.consumerId.toString(),
+      sourceId: a.sourceId.toString(),
+      amount: a.amount,
+      consumerDate: a.consumerDate,
+    })),
+    today,
+  });
 
   // Daily spending for every day of the month so far.
   const dailyMap = new Map(mtd.daily.map((d) => [d.date, d.total]));
@@ -78,19 +60,10 @@ export async function getDashboard(userId: string) {
   return {
     today,
     month,
-    period,
-    metrics: {
-      /** Money you can spend right now (equals the period's remaining and the sum of salary remainders). */
-      availableNow: balance.spendable,
-      /** Set aside outside spendable money: savings-goal funds + money invested (all time). */
-      inSavings: balance.savings + invested,
-      savingsGoals: balance.savings,
-      invested,
-      pendingTotal: balance.pendingTotal,
-      pendingCount: balance.pendingCount,
-    },
-    borrowed,
-    salary: { currentSalary, breakdown: salaryBreakdown },
+    period: figures.period,
+    metrics: figures.metrics,
+    borrowed: figures.borrowed,
+    salary: { breakdown: figures.salaryBreakdown },
     categories: mtd.categories,
     daily,
     series,
@@ -102,40 +75,3 @@ export async function getDashboard(userId: string) {
 }
 
 export type DashboardData = Awaited<ReturnType<typeof getDashboard>>;
-
-/** All-time paid spending in "Investment / saving" categories (e.g. Alwin Investment). */
-async function getInvestedTotal(userId: string, lookups: Lookups): Promise<number> {
-  const cats = categoryMap(lookups);
-  const savingIds = lookups.categories.filter((c) => c.nature === "saving").map((c) => oid(c.id));
-  if (savingIds.length === 0) return 0;
-  const docs = await Transaction.find(
-    { userId: oid(userId), type: "expense", status: "paid", $or: [{ categoryId: { $in: savingIds } }, { "items.categoryId": { $in: savingIds } }] },
-    { amount: 1, categoryId: 1, items: 1 },
-  ).lean();
-  let total = 0;
-  for (const t of docs) {
-    for (const line of expenseLines(t)) {
-      if (line.categoryId && cats.get(line.categoryId)?.nature === "saving") total += line.amount;
-    }
-  }
-  return total;
-}
-
-/**
- * Money owed to family, reusing Family & Allocations: what was agreed (allocated), what has
- * been paid back (payments linked to the person), and what is still outstanding.
- */
-async function getBorrowedOverview(userId: string) {
-  const people = (await listPeople(userId)).filter((p) => p.totalAllocated > 0);
-  const details = await Promise.all(people.map((p) => getPersonDetail(userId, p.id)));
-  const byPerson = people.map((p, i) => {
-    const open = (details[i]?.allocations ?? [])
-      .filter((a) => a.remaining > 0)
-      .sort((a, b) => a.month.localeCompare(b.month))
-      .map((a) => ({ month: a.month, remaining: a.remaining, note: a.note }));
-    return { id: p.id, name: p.name, borrowed: p.totalAllocated, repaid: p.totalPaid, remaining: Math.max(0, p.totalAllocated - p.totalPaid), open };
-  });
-  const total = byPerson.reduce((s, p) => s + p.borrowed, 0);
-  const repaid = byPerson.reduce((s, p) => s + Math.min(p.repaid, p.borrowed), 0);
-  return { total, repaid, remaining: total - repaid, byPerson };
-}

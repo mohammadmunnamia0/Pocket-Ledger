@@ -78,7 +78,7 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
               <Pencil /> Edit
             </ButtonLink>
           )}
-          <DeleteTxnButton id={t.id} title={title} redirectTo="/transactions" />
+          <DeleteTxnButton id={t.id} title={title} updatedAt={t.updatedAt} redirectTo="/transactions" />
         </div>
       </div>
 

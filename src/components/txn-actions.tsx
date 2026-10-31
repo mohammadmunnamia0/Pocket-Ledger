@@ -10,15 +10,19 @@ import { ConfirmButton } from "@/components/confirm-button";
 import { useAction } from "@/components/use-action";
 import { deleteTransactionAction, markPaidAction } from "@/app/actions/ledger";
 import { todayISO } from "@/lib/dates";
+import { offlineDelete, saveWithFallback } from "@/lib/offline/hooks";
 
 export function DeleteTxnButton({
   id,
   title,
   redirectTo,
   iconOnly = false,
+  updatedAt,
 }: {
   id: string;
   title: string;
+  /** Version the user is looking at — lets the delete be queued safely while offline. */
+  updatedAt?: string;
   redirectTo?: string;
   iconOnly?: boolean;
 }) {
@@ -27,7 +31,11 @@ export function DeleteTxnButton({
     <ConfirmButton
       title={`Delete “${title}”?`}
       description="This permanently removes the transaction. All balances, salary funding and reports are recalculated. Deleting income that already funded expenses is refused."
-      action={() => deleteTransactionAction(id)}
+      action={() =>
+        updatedAt
+          ? saveWithFallback(() => deleteTransactionAction(id), () => offlineDelete({ id, updatedAt, title }))
+          : deleteTransactionAction(id)
+      }
       onDone={() => redirectTo && router.push(redirectTo)}
       variant={iconOnly ? "ghost" : "destructive"}
       size={iconOnly ? "icon-xs" : "sm"}

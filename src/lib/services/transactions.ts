@@ -17,9 +17,9 @@ import {
   type TxnType,
 } from "../db/models";
 import { AppError, NotFoundError } from "../errors";
-import { formatDate, formatMonthLong, monthOf } from "../dates";
-import { sum } from "../money";
+import { formatDate } from "../dates";
 import { txnInputSchema, type TxnInput, type TxnInputRaw } from "../validation";
+import { deriveTxn } from "../ledger/derive";
 import { affectsFunding, recomputeFunding, withLedger } from "../ledger/engine";
 import { categoryMap, categoryWithChildren, getLookups, type Lookups } from "./lookups";
 
@@ -57,6 +57,8 @@ export interface TxnDTO {
   } | null;
   fundingSourceId: string | null;
   createdAt: string;
+  /** Server version stamp — offline edits send it back so changes made elsewhere are never overwritten. */
+  updatedAt: string;
   runningBalance?: number;
 }
 
@@ -106,6 +108,7 @@ export function toTxnDTO(t: LeanTxn, lookups: Lookups): TxnDTO {
       : null,
     fundingSourceId: t.fundingSourceId?.toString() ?? null,
     createdAt: new Date(t.createdAt).toISOString(),
+    updatedAt: new Date(t.updatedAt ?? t.createdAt).toISOString(),
     runningBalance: t.runningBalance,
   };
 }
@@ -157,48 +160,21 @@ async function normalize(userId: string, input: TxnInput): Promise<Omit<Transact
     if (!src) throw new AppError("Selected funding salary does not exist");
   }
 
-  const amount = isExpense && input.items.length > 0 ? sum(input.items.map((i) => i.amount)) : input.amount!;
-  const kind: IncomeKind = input.incomeKind ?? "salary";
-  const attributionMonth = input.attributionMonth ?? monthOf(input.date);
-
+  // Same derivation the offline app uses to preview queued changes (lib/ledger/derive.ts).
+  const d = deriveTxn(input, { othersCategoryId: categoryId ?? null, defaultAccountId: accountId ?? null });
+  const toId = (v: string | null) => (v ? oid(v) : null);
   return {
+    ...d,
     userId: uid,
-    type: input.type,
-    status: isExpense ? input.status : "paid",
-    title: input.title,
-    amount,
-    date: input.date,
-    attributionMonth,
-    categoryId: categoryId ? oid(categoryId) : null,
-    paymentMethod: input.paymentMethod,
-    accountId: accountId ? oid(accountId) : null,
-    toAccountId: input.type === "transfer" && input.toAccountId ? oid(input.toAccountId) : null,
-    personId: isExpense && input.personId ? oid(input.personId) : null,
-    goalId: input.type.startsWith("savings_") && input.goalId ? oid(input.goalId) : null,
-    notes: input.notes,
-    income:
-      input.type === "income"
-        ? { kind, label: input.incomeLabel ?? (kind === "salary" ? `${formatMonthLong(attributionMonth)} Salary` : undefined) }
-        : null,
-    items: isExpense
-      ? (input.items.map((i) => ({
-          name: i.name,
-          amount: i.amount,
-          categoryId: i.categoryId ? oid(i.categoryId) : null,
-          notes: i.notes,
-        })) as TransactionDoc["items"])
-      : [],
-    bill:
-      isExpense && input.bill
-        ? {
-            billType: input.bill.billType,
-            rechargeDate: input.bill.rechargeDate ?? null,
-            coverageFrom: input.bill.coverageFrom ?? null,
-            coverageTo: input.bill.coverageTo ?? null,
-            recurringBillId: input.bill.recurringBillId ? oid(input.bill.recurringBillId) : null,
-          }
-        : null,
-    fundingSourceId: isExpense && input.fundingSourceId ? oid(input.fundingSourceId) : null,
+    categoryId: toId(d.categoryId),
+    accountId: toId(d.accountId),
+    toAccountId: toId(d.toAccountId),
+    personId: toId(d.personId),
+    goalId: toId(d.goalId),
+    income: d.income as TransactionDoc["income"],
+    items: d.items.map((i) => ({ ...i, categoryId: toId(i.categoryId) })) as TransactionDoc["items"],
+    bill: d.bill ? { ...d.bill, recurringBillId: toId(d.bill.recurringBillId) } : null,
+    fundingSourceId: toId(d.fundingSourceId),
     importBatch: null,
   };
 }
@@ -226,12 +202,13 @@ export async function assertGoalNeverNegative(userId: string, goalId: Types.Obje
 export async function createTransaction(
   userId: string,
   raw: TxnInputRaw,
-  opts: { session?: ClientSession; importBatch?: string } = {},
+  opts: { session?: ClientSession; importBatch?: string; clientRef?: string } = {},
 ): Promise<string> {
   const input = txnInputSchema.parse(raw);
   await connectDB();
   const doc = await normalize(userId, input);
   if (opts.importBatch) doc.importBatch = opts.importBatch;
+  if (opts.clientRef) doc.clientRef = opts.clientRef;
 
   const run = async (session: ClientSession) => {
     const [created] = await Transaction.create([doc], { session });
@@ -254,7 +231,7 @@ export async function createTransaction(
   return id;
 }
 
-export async function updateTransaction(userId: string, id: string, raw: TxnInputRaw): Promise<void> {
+export async function updateTransaction(userId: string, id: string, raw: TxnInputRaw, opts: { opId?: string } = {}): Promise<void> {
   const input = txnInputSchema.parse(raw);
   await connectDB();
   const uid = oid(userId);
@@ -264,6 +241,7 @@ export async function updateTransaction(userId: string, id: string, raw: TxnInpu
 
   const next = await normalize(userId, input);
   next.importBatch = existing.importBatch ?? null;
+  if (opts.opId) next.lastOpId = opts.opId;
 
   await withLedger(userId, async (session) => {
     // $set (not replace) so createdAt — the same-day ordering key — is preserved.

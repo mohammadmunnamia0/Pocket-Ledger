@@ -11,7 +11,9 @@ import { requireUser } from "@/lib/auth/session";
 import { getLookups } from "@/lib/services/lookups";
 import { connectDB } from "@/lib/db/connect";
 import { User, oid } from "@/lib/db/models";
-import { logoutAction } from "@/app/actions/auth";
+import { SyncIndicator } from "@/components/sync/sync-indicator";
+import { SyncProvider } from "@/components/sync/sync-provider";
+import { SignOutButton } from "@/components/sync/sign-out-button";
 
 /**
  * App chrome is static and prerendered; the parts that need the session (quick add with
@@ -42,6 +44,10 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
             <Brand />
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
+            <SyncIndicator />
+            <Suspense fallback={null}>
+              <SyncLoader />
+            </Suspense>
             <Suspense
               fallback={
                 <Button variant="ghost" size="icon" disabled aria-label="Notifications">
@@ -89,6 +95,12 @@ async function AlertBellLoader() {
   return <AlertBell alerts={await getActiveAlerts(user.id)} />;
 }
 
+/** Keeps this device's offline copy and queue in sync for the signed-in account. */
+async function SyncLoader() {
+  const user = await requireUser();
+  return <SyncProvider userId={user.id} />;
+}
+
 async function UserMenu() {
   const user = await requireUser();
   return (
@@ -97,11 +109,9 @@ async function UserMenu() {
         <p className="truncate text-sm font-medium">{user.name}</p>
         <p className="truncate text-xs text-muted-foreground">{user.email}</p>
       </div>
-      <form action={logoutAction}>
-        <Button type="submit" variant="ghost" size="icon-sm" aria-label="Sign out">
-          <LogOut />
-        </Button>
-      </form>
+      <SignOutButton variant="ghost" size="icon-sm" label="Sign out">
+        <LogOut />
+      </SignOutButton>
     </div>
   );
 }

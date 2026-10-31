@@ -1,32 +1,25 @@
 import { connectDB } from "../db/connect";
 import { FundingAllocation, Transaction, oid, type IncomeKind, type TxnType } from "../db/models";
-import { addDays, todayISO } from "../dates";
+import { todayISO } from "../dates";
 import { compareLedgerOrder } from "../ledger/fifo";
+import {
+  buildFundingRecords,
+  buildSalaryCycles,
+  currentCycle as modelCurrentCycle,
+  type AllocItem,
+  type FundingSourceRecord,
+  type SalaryCycle,
+  type SourceItem,
+} from "../ledger/model";
 import { SOURCE_TYPES, CONSUMER_TYPES } from "../ledger/engine";
 import { categoryMap, getLookups } from "./lookups";
 
-export type SourceStatus = "active" | "partial" | "exhausted";
-
-export interface FundingSourceRecord {
-  id: string;
-  type: TxnType;
-  kind: IncomeKind | "withdrawal";
-  label: string;
-  date: string;
-  amount: number;
-  used: number;
-  remaining: number;
-  status: SourceStatus;
-  /** Date the last taka was spent, when exhausted. */
-  exhaustedOn: string | null;
-  /** Remaining balance when the next salary arrived (null for the latest salary). */
-  carriedForward: number | null;
-  nextSalaryDate: string | null;
-}
+export type { FundingSourceRecord, SalaryCycle, SourceStatus } from "../ledger/model";
 
 interface LoadedLedger {
-  sources: { id: string; type: TxnType; kind: IncomeKind | "withdrawal"; label: string; date: string; seq: number; amount: number }[];
-  allocations: { consumerId: string; sourceId: string; amount: number; consumerDate: string }[];
+  sources: SourceItem[];
+  /** The stored FIFO funding ledger. */
+  allocations: AllocItem[];
 }
 
 async function loadLedger(userId: string): Promise<LoadedLedger> {
@@ -60,36 +53,7 @@ async function loadLedger(userId: string): Promise<LoadedLedger> {
 }
 
 function buildRecords(ledger: LoadedLedger): FundingSourceRecord[] {
-  const bySource = new Map<string, { amount: number; consumerDate: string }[]>();
-  for (const a of ledger.allocations) {
-    if (!bySource.has(a.sourceId)) bySource.set(a.sourceId, []);
-    bySource.get(a.sourceId)!.push(a);
-  }
-  const salaries = ledger.sources.filter((s) => s.kind === "salary");
-
-  return ledger.sources.map((s) => {
-    const allocs = bySource.get(s.id) ?? [];
-    const used = allocs.reduce((acc, a) => acc + a.amount, 0);
-    const remaining = s.amount - used;
-    const next = salaries.find((x) => compareLedgerOrder(x, s) > 0 && x.date > s.date);
-    const carriedForward = next
-      ? s.amount - allocs.filter((a) => a.consumerDate < next.date).reduce((acc, a) => acc + a.amount, 0)
-      : null;
-    return {
-      id: s.id,
-      type: s.type,
-      kind: s.kind,
-      label: s.label,
-      date: s.date,
-      amount: s.amount,
-      used,
-      remaining,
-      status: remaining === 0 ? "exhausted" : used === 0 ? "active" : "partial",
-      exhaustedOn: remaining === 0 && allocs.length ? allocs.reduce((m, a) => (a.consumerDate > m ? a.consumerDate : m), "") : null,
-      carriedForward,
-      nextSalaryDate: next?.date ?? null,
-    };
-  });
+  return buildFundingRecords(ledger.sources, ledger.allocations);
 }
 
 /** Every funding source (salaries, other income, savings withdrawals) with derived balances. */
@@ -151,37 +115,9 @@ export async function getSalaryFundingHistory(userId: string, sourceId: string) 
 
 /* ------------------------------------------------------------------ Salary cycles */
 
-export interface SalaryCycle {
-  salaryId: string;
-  label: string;
-  start: string;
-  /** Day before the next salary, or null while this is the current cycle. */
-  end: string | null;
-  nextSalaryDate: string | null;
-  startingAmount: number;
-  /** Unspent money from earlier sources at the moment this salary arrived. */
-  carriedIn: number;
-  /** Which earlier salaries (or other income) the carried-in money is left over from. */
-  carriedFrom: { sourceId: string; label: string; date: string; amount: number }[];
-  otherIncome: number;
-  totalAvailable: number;
-  totalSpent: number;
-  fundedByThisSalary: number;
-  fundedByPrevious: number;
-  fundedByOther: number;
-  thisSalaryRemaining: number;
-  previousRemaining: number;
-  /** Paid outflows dated in the cycle that are not yet funded (should always be 0). */
-  unfunded: number;
-  expenseCount: number;
-  /** Money left when the period ended (= carried into the next salary); for the current period, left now. */
-  remainingAtEnd: number;
-}
-
 /**
- * Salary cycles run from one salary's received date up to the day before the next.
- * Figures come from the FIFO funding ledger, so they line up exactly with
- * per-salary balances and never double-count carried-forward money.
+ * Salary cycles run from one salary's received date up to the day before the next
+ * (computed by the shared model from the stored FIFO funding ledger).
  */
 export async function getSalaryCycles(userId: string): Promise<SalaryCycle[]> {
   await connectDB();
@@ -190,77 +126,16 @@ export async function getSalaryCycles(userId: string): Promise<SalaryCycle[]> {
     { userId: oid(userId), status: "paid", type: { $in: CONSUMER_TYPES } },
     { date: 1, amount: 1 },
   ).lean();
-
-  const salaries = ledger.sources.filter((s) => s.kind === "salary");
-  const order = new Map(ledger.sources.map((s, i) => [s.id, i]));
-
-  return salaries.map((sal, i) => {
-    const next = salaries.slice(i + 1).find((x) => x.date > sal.date) ?? null;
-    const start = sal.date;
-    const end = next ? addDays(next.date, -1) : null;
-    const inCycle = (d: string) => d >= start && (end === null || d <= end);
-    const myIdx = order.get(sal.id)!;
-
-    const earlier = ledger.sources.filter((s) => order.get(s.id)! < myIdx);
-    const earlierIds = new Set(earlier.map((s) => s.id));
-    const usedBeforeStart = ledger.allocations
-      .filter((a) => earlierIds.has(a.sourceId) && a.consumerDate < start)
-      .reduce((acc, a) => acc + a.amount, 0);
-    const carriedIn = earlier.reduce((acc, s) => acc + s.amount, 0) - usedBeforeStart;
-    const carriedFrom = earlier
-      .map((src) => ({
-        sourceId: src.id,
-        label: src.label,
-        date: src.date,
-        amount:
-          src.amount -
-          ledger.allocations.filter((a) => a.sourceId === src.id && a.consumerDate < start).reduce((acc, a) => acc + a.amount, 0),
-      }))
-      .filter((x) => x.amount > 0);
-
-    const otherInCycle = ledger.sources.filter((s) => s.id !== sal.id && !earlierIds.has(s.id) && inCycle(s.date));
-    const otherIncome = otherInCycle.reduce((acc, s) => acc + s.amount, 0);
-
-    let fundedByThisSalary = 0, fundedByPrevious = 0, fundedByOther = 0, thisUsedThroughEnd = 0;
-    const cycleConsumers = new Set<string>();
-    for (const a of ledger.allocations) {
-      if (a.sourceId === sal.id && (end === null || a.consumerDate <= end)) thisUsedThroughEnd += a.amount;
-      if (!inCycle(a.consumerDate)) continue;
-      cycleConsumers.add(a.consumerId);
-      if (a.sourceId === sal.id) fundedByThisSalary += a.amount;
-      else if (earlierIds.has(a.sourceId)) fundedByPrevious += a.amount;
-      else fundedByOther += a.amount;
-    }
-    const spent = consumers.filter((c) => inCycle(c.date));
-    const totalSpent = spent.reduce((acc, c) => acc + c.amount, 0);
-
-    return {
-      salaryId: sal.id,
-      label: sal.label,
-      start,
-      end,
-      nextSalaryDate: next?.date ?? null,
-      startingAmount: sal.amount,
-      carriedIn,
-      carriedFrom,
-      otherIncome,
-      totalAvailable: carriedIn + sal.amount + otherIncome,
-      totalSpent,
-      fundedByThisSalary,
-      fundedByPrevious,
-      fundedByOther,
-      thisSalaryRemaining: sal.amount - thisUsedThroughEnd,
-      previousRemaining: carriedIn - fundedByPrevious,
-      unfunded: totalSpent - (fundedByThisSalary + fundedByPrevious + fundedByOther),
-      expenseCount: spent.length,
-      remainingAtEnd: carriedIn + sal.amount + otherIncome - totalSpent,
-    };
-  });
+  return buildSalaryCycles(
+    ledger.sources,
+    ledger.allocations,
+    consumers.map((c) => ({ id: c._id.toString(), date: c.date, amount: c.amount })),
+  );
 }
 
 /** The cycle containing `date` (defaults to today). */
 export function currentCycle(cycles: SalaryCycle[], date: string = todayISO()): SalaryCycle | null {
-  return [...cycles].reverse().find((c) => c.start <= date && (c.end === null || c.end >= date)) ?? null;
+  return modelCurrentCycle(cycles, date);
 }
 
 export interface SalaryPeriodPayment {

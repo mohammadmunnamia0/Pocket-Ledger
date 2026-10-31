@@ -3,6 +3,7 @@
 import { useCallback, useTransition } from "react";
 import { toast } from "sonner";
 import type { ActionResult } from "@/lib/errors";
+import { requestPull } from "@/lib/offline/engine";
 
 type Failure = Extract<ActionResult, { ok: false }>;
 
@@ -19,6 +20,7 @@ export function useAction() {
         try {
           const res = await action();
           if (res.ok) {
+            requestPull();
             if (opts.success !== false) toast.success(opts.success ?? res.message ?? "Saved");
             opts.onSuccess?.(res.data);
           } else {

@@ -12,6 +12,10 @@ export async function proxy(request: NextRequest) {
   const isPublic = PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
   const userId = await verifySession(request.cookies.get(SESSION_COOKIE)?.value);
 
+  // API calls (e.g. offline sync) get a 401 they can handle, not a redirect to the sign-in page.
+  if (!userId && pathname.startsWith("/api/")) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   if (!userId && !isPublic) {
     const url = new URL("/login", request.url);
     if (pathname !== "/") url.searchParams.set("next", pathname);

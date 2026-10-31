@@ -28,95 +28,22 @@ PocketLedger can be installed on your home screen and opens full-screen like a n
 - **iPhone / iPad (Safari):** tap **Install app** for step-by-step instructions (Share → *Add to Home Screen*).
 - **Desktop (Chrome / Edge):** use the install icon in the address bar.
 
-The service worker (`public/sw.js`) caches only content-hashed build assets and icons. Pages and financial data are always fetched live and never stored on the device. When there's no connection you get an offline page and a banner instead of stale balances. Icons are generated with `node scripts/generate-icons.mjs`.
+Icons are generated with `node scripts/generate-icons.mjs`.
 
-## Getting started
+## Offline use and sync
 
-```bash
-npm install
-cp .env.example .env.local   # then fill in MONGODB_URI and SESSION_SECRET
-npm run dev                  # http://localhost:3000
-```
+PocketLedger is offline-first. It keeps working with no connection, in the browser and as an installed app.
 
-On first visit you are sent to `/setup` to create your account. Setup is only possible while no account exists. Default categories and accounts (Cash, Bank Account, Mobile Banking) are created for you.
+- **Device copy.** After each online visit, the app saves your ledger to IndexedDB (`GET /api/sync/snapshot`, ETag-cached). Offline, every screen opens a local view (`/offline?from=<page>`) built from that copy. It covers the dashboard, transactions, details, salary history, monthly report, borrowed money and savings.
+- **Same maths.** The server and the device use the same pure functions (`src/lib/ledger/model.ts`, `derive.ts`). That covers FIFO salary funding, carry-forward, period totals and running balances, so the figures match exactly. An integration test compares them. An expense that a salary can't fund is refused offline with the same message the server gives.
+- **Outbox.** Adds, edits, deletes and "mark paid" made offline go into an IndexedDB queue. Each one has a unique `opId`, and new records also have a `clientRef`. An entry stays queued until the server confirms it (`POST /api/sync/push`). It survives reloads, restarts and crashes. Sync runs in order, one tab at a time (Web Locks), when the connection returns, when the app regains focus, and on a backoff timer.
+- **No duplicates.** The server records every applied `opId` (`SyncOp`) and enforces a unique `clientRef` per user. A retried request returns the original result and is never applied twice.
+- **No silent overwrites.** Edits and deletes carry the version they were based on. If the record changed on another device in the meantime, the change is held as a conflict. The sync indicator then lets you choose **Keep mine** or **Keep the server's**.
+- **Sync indicator** (cloud icon in the header) shows online/offline status, the number of waiting changes, sync in progress, the last successful sync, and conflicts or refused changes with Retry / Discard.
+- **Online-only:** managing categories, people, savings goals, bills, savings deposits/withdrawals and settings. All of these can still be viewed offline.
+- **Privacy:** signing out syncs what it can, asks before discarding unsynced changes, and then wipes the device copy.
 
-Generate a session secret with:
-
-```bash
-node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
-```
-
-The database needs to be a **replica set** for multi-document transactions. MongoDB Atlas clusters already are.
-
-### Can't sign in?
-
-- Use the **email you signed up with** — passwords are case-sensitive; tap the eye icon to see what was typed or auto-filled.
-- After 8 wrong attempts from the same network, sign-in for that email pauses for 10 minutes (the message says how long).
-- Each browser keeps its own session, and an installed iPhone app keeps a separate one from Safari, so sign in once in each.
-- Forgot the password? Reset it from your computer (uses `.env.local`), which also lifts any lock:
-
-```bash
-npx tsx scripts/reset-password.mts you@example.com "new-password"
-```
-
-Failed sign-ins are logged on the server with a reason (`unknown-email` / `wrong-password`, never the password), visible in the Vercel runtime logs.
-
-### Scripts
-
-| Command | What it does |
-| --- | --- |
-| `npm run dev` | Development server |
-| `npm run build` / `npm start` | Production build / server |
-| `npm test` | Unit tests + integration tests (needs `.env.local`; uses a throwaway `pocketledger_test_*` database that it cleans up) |
-| `npm run typecheck` | `tsc --noEmit` |
-| `npm run lint` | ESLint |
-
-## How the money works
-
-All amounts are stored as **integer poisha** (৳1 = 100 poisha), so there is no floating-point drift. Dates are Asia/Dhaka calendar strings (`YYYY-MM-DD`).
-
-### One ledger
-
-Every movement of money is a `Transaction`:
-
-| Type | Spendable balance | Notes |
-| --- | --- | --- |
-| `income` (salary / bonus / other / opening) | + | A **funding source** |
-| `expense` (paid) | − | A **consumer**; breakdown items replace the parent in reports |
-| `expense` (pending) | 0 | Consumes nothing until it is marked paid |
-| `savings_deposit` | − | Moves money into a goal; not counted as consumption |
-| `savings_withdrawal` | + | Returns money from a goal; a funding source |
-| `transfer` | 0 | Moves money between your own accounts only |
-
-No balance is ever stored as an editable number. Balances, salary remainders, report totals and running balances are all computed from these records.
-
-### FIFO salary funding
-
-`src/lib/ledger/fifo.ts` is a pure allocator. For every paid consumer, in date order, it draws from the oldest funding source dated on or before it. If the expense has a manual override, the chosen salary is drawn first. The results are stored in `FundingAllocation` (expense ↔ salary, many-to-many).
-
-When anything changes (a new, edited, back-dated or deleted transaction, or a salary's amount or date), `recomputeFunding` rebuilds allocations from the earliest affected date inside a MongoDB transaction:
-
-- Consumers before that date keep their allocations. They could only have used sources dated before the change.
-- If any expense can no longer be fully funded, the whole change is **rejected** with a clear "Insufficient funds" message. No salary ever goes negative.
-- If an edit shifts the funding of *other* expenses, the change is written to `AllocationAudit`.
-- Each ledger transaction also bumps the user's `ledgerVersion`, so concurrent edits are serialized rather than interleaved.
-
-**Settings → Data integrity** rebuilds the funding ledger from scratch and verifies it.
-
-### Reports
-
-- **Calendar month:** opening = previous closing; total available = opening + income; closing = available − (expenses + net savings/investments). Category spending can be grouped by payment date or by the month the expense belongs to.
-- **Salary cycle:** from a salary's received date to the day before the next salary. It shows money carried in, spending funded by this salary vs. previous ones, and what is left. It is built from the funding ledger, so it never double-counts carried-forward money.
-
-## Importing your historical records
-
-Open **Import**, download the template, fill it in, then paste or upload it. The columns are `date, type, title, amount, category, subcategory, payment_method, status, month, person, notes, group, bill_type, recharge_date`.
-
-- **type** is `salary | bonus | income | opening | expense | bill | allocation`.
-- **Breakdowns:** rows sharing the same `group` become one expense with items.
-- **Money from before your first salary:** add an `opening` row.
-
-The preview shows totals, the calculated closing balance, new categories and people, likely duplicates, and any funding shortfalls. Amounts are never adjusted to make balances match.
+The service worker (`public/sw.js`) precaches the offline app and its assets and caches content-hashed build files. It never caches financial pages or API responses. Those live only in IndexedDB.
 
 ## Project layout
 
@@ -126,7 +53,9 @@ src/
   app/(app)/             dashboard and all pages (static shell + streamed data)
   app/actions/           server actions (auth + ledger mutations)
   app/api/               CSV exports, import template
-  lib/ledger/            FIFO allocator + transactional recompute engine
+  lib/ledger/            shared ledger model (server + device), FIFO allocator, recompute engine
+  lib/offline/           IndexedDB store, outbox + sync engine, local views (browser)
+  lib/sync/              sync protocol types
   lib/services/          finance, salary, transactions, people, bills, savings, alerts, import
   lib/alerts/            pure alert rules
   lib/db/                Mongoose connection + models

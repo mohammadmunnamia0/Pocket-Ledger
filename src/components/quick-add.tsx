@@ -10,6 +10,7 @@ import { CategoryOptions, Field, NativeSelect, type CategoryChoice } from "@/com
 import { useAction } from "@/components/use-action";
 import { HelpButton } from "@/components/help";
 import { createTransactionAction } from "@/app/actions/ledger";
+import { offlineCreate, saveWithFallback } from "@/lib/offline/hooks";
 import { PAYMENT_METHODS, type PaymentMethod } from "@/lib/constants";
 import { PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { todayISO } from "@/lib/dates";
@@ -51,9 +52,9 @@ export function QuickAdd({
   function submit(e: React.FormEvent, keepOpen = false) {
     e.preventDefault();
     run(
-      () =>
-        createTransactionAction({
-          type: "expense",
+      () => {
+        const payload = {
+          type: "expense" as const,
           title,
           amount,
           date,
@@ -62,7 +63,10 @@ export function QuickAdd({
           paymentMethod: method,
           status,
           personId: personId || undefined,
-        }),
+        };
+        // Offline (or the connection drops): keep it on the device and sync later.
+        return saveWithFallback(() => createTransactionAction(payload), () => offlineCreate(payload));
+      },
       {
         success: `Added “${title}”`,
         onSuccess: () => {

@@ -1,0 +1,1 @@
+npx tsx scripts/reset-password.mts you@example.com "new-password"

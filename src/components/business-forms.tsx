@@ -326,7 +326,9 @@ export function PeriodFilterBar() {
   const [month, setMonth] = useState(sp.get("month") ?? "");
 
   function apply(next: PeriodMode = mode) {
-    const q = new URLSearchParams();
+    // Keep any other filters on the page (search, category…); replace only the date ones.
+    const q = new URLSearchParams(sp.toString());
+    for (const k of ["period", "date", "month", "from", "to", "page"]) q.delete(k);
     if (next !== "all") q.set("period", next);
     if (next === "date" || next === "week") q.set("date", date || todayISO());
     if (next === "month") q.set("month", month || currentMonth());

@@ -12,7 +12,10 @@ import { requireUser } from "@/lib/auth/session";
 import { getLookups } from "@/lib/services/lookups";
 import { listTransactions } from "@/lib/services/transactions";
 import { parseTxnFilters } from "@/lib/filters";
-import { formatDate } from "@/lib/dates";
+import { addDays, formatDate } from "@/lib/dates";
+import { getBalanceSummary } from "@/lib/services/finance";
+import { parsePeriod } from "@/lib/business/period";
+import { PeriodFilterBar } from "@/components/business-forms";
 import { formatTaka } from "@/lib/money";
 import { PAYMENT_METHOD_LABELS, TXN_TYPE_LABELS } from "@/lib/labels";
 
@@ -58,6 +61,21 @@ async function TransactionsView({ searchParams }: { searchParams: Promise<SP> })
   const showBalance = !(filters.q || filters.type || filters.flow || filters.status || filters.categoryId || filters.personId);
   const filtered = showBalance ? !!(filters.from || filters.to) : true;
 
+  // Date-only filter → a balance statement: the real balance before the period, what came in
+  // and went out (paid, not transfers), and the closing balance = opening + in − out.
+  let statement: { label: string; opening: number; moneyIn: number; moneyOut: number; closing: number } | null = null;
+  if (showBalance && (filters.from || filters.to)) {
+    const opening = filters.from ? (await getBalanceSummary(user.id, addDays(filters.from, -1))).spendable : 0;
+    const p = parsePeriod(sp);
+    statement = {
+      label: p.mode !== "all" && p.mode !== "range" ? p.label : `${filters.from ? formatDate(filters.from) : "Start"} – ${filters.to ? formatDate(filters.to) : "today"}`,
+      opening,
+      moneyIn: list.totals.moneyIn,
+      moneyOut: list.totals.moneyOut,
+      closing: opening + list.totals.moneyIn - list.totals.moneyOut,
+    };
+  }
+
   const pageHref = (p: number) => {
     const next = new URLSearchParams(Object.entries(sp).filter((e): e is [string, string] => typeof e[1] === "string"));
     next.set("page", String(p));
@@ -67,6 +85,31 @@ async function TransactionsView({ searchParams }: { searchParams: Promise<SP> })
   return (
     <>
       <TransactionFilters categories={lookups.categories} persons={lookups.persons} />
+      <div className="mb-3">
+        <PeriodFilterBar />
+      </div>
+      {statement && (
+        <section aria-label="Period balance" className="mb-3 rounded-lg border bg-card px-3 py-2.5">
+          <p className="mb-1.5 text-xs text-muted-foreground">
+            {statement.label} — transfers between Bank, Cash and Mobile Banking don&apos;t count as received or spent.
+          </p>
+          <dl className="grid grid-cols-2 gap-2 text-sm sm:grid-cols-4">
+            {(
+              [
+                ["Opening balance", statement.opening],
+                ["+ Money received", statement.moneyIn],
+                ["− Money spent", statement.moneyOut],
+                ["= Closing balance", statement.closing],
+              ] as const
+            ).map(([label, value], i) => (
+              <div key={label}>
+                <dt className="text-xs text-muted-foreground">{label}</dt>
+                <dd className={i === 3 ? "font-semibold tabular" : "font-medium tabular"}>{formatTaka(value)}</dd>
+              </div>
+            ))}
+          </dl>
+        </section>
+      )}
       {filtered && list.total > 0 && (
         <div className="mb-3 flex flex-wrap items-center gap-x-5 gap-y-1 rounded-lg border bg-card px-3 py-2 text-sm">
           <span className="text-muted-foreground">

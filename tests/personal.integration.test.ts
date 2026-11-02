@@ -283,3 +283,29 @@ describe("Remaining balance distribution (Bank / Cash / Mobile Banking)", () => 
     await expectIntegrity();
   });
 });
+
+describe("personal date filter statement", () => {
+  it("opening + received − spent = closing = the real balance at the end of the period", async () => {
+    const { listTransactions } = await import("@/lib/services/transactions");
+    const { parseTxnFilters } = await import("@/lib/filters");
+    await salary(10000, "2026-10-01");
+    await expense("Groceries", 500, "2026-10-05");
+    await createTransaction(userId, { type: "transfer", title: "ATM", amount: "2000", date: "2026-10-06", accountId: acct.bank, toAccountId: acct.cash });
+    await saveLoan(userId, { direction: "lent", person: "Rahim", amount: "1000", date: "2026-10-06", accountId: acct.cash });
+    await createTransaction(userId, { type: "income", title: "Freelance", amount: "700", date: "2026-10-08", incomeKind: "other", accountId: acct.mobile });
+    await expense("Fuel", 300, "2026-10-12");
+
+    const statement = async (sp: Record<string, string>) => {
+      const f = parseTxnFilters(sp);
+      const list = await listTransactions(userId, f);
+      const opening = f.from ? (await getBalanceSummary(userId, new Date(Date.parse(`${f.from}T00:00:00Z`) - 864e5).toISOString().slice(0, 10))).spendable : 0;
+      const closing = opening + list.totals.moneyIn - list.totals.moneyOut;
+      return { opening: opening / 100, in: list.totals.moneyIn / 100, out: list.totals.moneyOut / 100, closing: closing / 100, real: (await getBalanceSummary(userId, f.to!)).spendable / 100 };
+    };
+    // Range 5–10 Oct: transfer not counted; lending counted as money out (not an expense).
+    expect(await statement({ period: "range", from: "2026-10-05", to: "2026-10-10" })).toEqual({ opening: 10000, in: 700, out: 1500, closing: 9200, real: 9200 });
+    expect(await statement({ period: "date", date: "2026-10-12" })).toEqual({ opening: 9200, in: 0, out: 300, closing: 8900, real: 8900 });
+    expect(await statement({ period: "week", date: "2026-10-08" })).toEqual({ opening: 10000, in: 700, out: 1500, closing: 9200, real: 9200 }); // Sat 3 – Fri 9
+    expect(await statement({ period: "month", month: "2026-10" })).toEqual({ opening: 0, in: 10700, out: 1800, closing: 8900, real: 8900 });
+  });
+});

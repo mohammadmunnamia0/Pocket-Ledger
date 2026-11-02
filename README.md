@@ -23,7 +23,7 @@ A personal salary, expense and savings ledger in Bangladeshi Taka (৳). Each sa
 - **Quick Add**: a five-field expense dialog available on every page. It remembers your last category and payment method.
 - **Expenses** can be a simple expense or an itemized breakdown; the total is always computed from the items. Each expense can be paid or pending, linked to a person or a "belongs to" month, and given a manual funding-salary override.
 - **Income & Salary**: one record per salary, showing used, remaining, carried forward, status (unused / partially used / exhausted) and the date it was exhausted. Each salary has a page listing every expense it funded.
-- **Transactions**: search and filters, a running balance after every row, edit, delete with confirmation, and CSV export.
+- **Transactions**: search and filters, a running balance after every row, edit, delete with confirmation, and CSV export. Each row says which place (Bank, Cash or Mobile Banking) the money came from or went into. The date filter covers a specific date, a week (Saturday to Friday), a month or a range, and shows a statement: the real balance before the period, money received, money spent, and closing = opening + received − spent. Transfers between your own accounts are not counted as received or spent.
 - **Categories**: a two-level tree. You can create, rename, move and delete categories; deleting one reassigns its transactions so nothing is orphaned.
 - **Family & Allocations**: monthly allocations are commitments, not expenses. Paid and remaining amounts come from payment records.
 - **Utility Bills**: billing month, payment date, recharge date and coverage period are stored separately. Recurring bills drive the upcoming and overdue reminders.

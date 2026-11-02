@@ -215,14 +215,17 @@ export async function saveBusinessTxn(userId: string, key: string, raw: Business
   await connectDB();
   const uid = oid(userId);
   const b = await requireBusiness(userId, key);
-  assertOnOrAfterOpening(b, input.date);
   const doc = { kind: input.kind, title: input.title, amount: input.amount, date: input.date, party: input.party ?? null, note: input.note ?? null };
-  if (!id) return (await BusinessTxn.create({ userId: uid, businessId: b._id, ...doc }))._id.toString();
+  if (!id) {
+    assertOnOrAfterOpening(b, input.date);
+    return (await BusinessTxn.create({ userId: uid, businessId: b._id, ...doc }))._id.toString();
+  }
 
   // Only a transaction of THIS business can be changed from its page.
   const existing = await BusinessTxn.findOne({ _id: oid(id), userId: uid, businessId: b._id }).lean();
   if (!existing) throw new NotFoundError("Transaction");
   if (existing.linkRef) throw new AppError("This is an inter-business transaction — edit it as one, so both businesses stay in step.");
+  assertOnOrAfterOpening(b, input.date);
   await BusinessTxn.updateOne({ _id: existing._id, userId: uid, businessId: b._id }, { $set: doc });
   return id;
 }

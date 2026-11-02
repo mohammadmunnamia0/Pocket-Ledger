@@ -7,7 +7,7 @@ A personal salary, expense and savings ledger in Bangladeshi Taka (৳). Each sa
 ## Features
 
 - **All accounts** is the first screen. It shows four cards: Personal Finance, Alwin BD, ReturnHex and Naire. Business accounting arrives in a later phase; until then the business cards say "not set up yet". The personal dashboard is at `/personal`.
-- **Business accounting** (`/business/<key>`) is one reusable system for every business: `lib/business/model.ts` holds the rules and `lib/services/business.ts` the storage. Alwin BD and ReturnHex are live; Naire is switched on in the registry (`lib/business/registry.ts`) in the next phase.
+- **Business accounting** (`/business/<key>`) is one reusable system for every business: `lib/business/model.ts` holds the rules and `lib/services/business.ts` the storage. Alwin BD, ReturnHex and Naire are all live, switched on in the registry (`lib/business/registry.ts`).
   - Each business has a permanent id. Every query and change is scoped to the user and that id, so one business's records can never mix with another's. Renaming a business keeps its history.
   - Each business has an opening balance and start date. The opening balance is never counted as income or investment, and nothing can be dated before the start date.
   - Money in: owner investment, business income, other receipts. Money out: business expense, product purchase, supplier payment, inventory, marketing, domain & hosting, other payments.

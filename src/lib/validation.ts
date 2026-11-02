@@ -250,10 +250,11 @@ export type HoldingsInputRaw = z.input<typeof holdingsInputSchema>;
 
 /* ---------------------------------------------------------------- Business accounting */
 
-const signedAmountField = z.union([z.string(), z.number()]).transform((v, ctx) => {
-  const p = v === "" ? 0 : parseTaka(v);
+/** 0 or more, and required: an empty value is refused rather than assumed to be 0. */
+const openingAmountField = z.union([z.string(), z.number()]).transform((v, ctx) => {
+  const p = typeof v === "string" && v.trim() === "" ? null : parseTaka(v);
   if (p === null || p < 0) {
-    ctx.addIssue({ code: "custom", message: "Enter 0 or more" });
+    ctx.addIssue({ code: "custom", message: "Enter the opening balance (0 if the business started with nothing)" });
     return z.NEVER;
   }
   return p;
@@ -263,7 +264,7 @@ export const businessSetupSchema = z.object({
   name: z.string().trim().min(1, "Enter the business name").max(80),
   type: z.string().trim().max(80).default(""),
   /** Money available when the records begin. Required — never assumed. */
-  openingBalance: signedAmountField,
+  openingBalance: openingAmountField,
   openingDate: dateField,
 });
 export type BusinessSetupRaw = z.input<typeof businessSetupSchema>;

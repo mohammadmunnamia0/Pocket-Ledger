@@ -179,8 +179,8 @@ describe("separation and safeguards", () => {
     await expect(saveInterBusiness(userId, "alwin-bd", { ...raw, ref: "retry-ref-0002", date: "2026-10-06" })).rejects.toThrow(/ReturnHex's records start/);
     expect(await BusinessTxn.countDocuments({ linkRef: "retry-ref-0002" })).toBe(0);
 
-    // Businesses not yet turned on can't be set up from the app.
-    await expect(setupBusiness(userId, "naire", { name: "Naire", openingBalance: "0", openingDate: "2026-10-01" })).rejects.toThrow(/isn't available/);
+    // Only the known businesses can be set up.
+    await expect(setupBusiness(userId, "not-a-business", { name: "X", openingBalance: "0", openingDate: "2026-10-01" })).rejects.toThrow(/isn't available/);
   });
 
   it("renaming a business keeps its history (records point at its id, not its name)", async () => {
@@ -232,5 +232,73 @@ describe("ReturnHex (Phase 3) — the same system, its own records", () => {
     // Date filter on ReturnHex: 9 Oct opens at the opening balance and closes at ৳8,768.
     const day = await ledger("returnhex", { period: "date", date: "2026-10-09" });
     expect([day.period.openingBalance, day.period.moneyIn, day.period.moneyOut, day.period.closingBalance].map((v) => v / 100)).toEqual([24778, 4000, 20010, 8768]);
+  });
+});
+
+describe("Naire (Phase 4) — three businesses, one system, separate records", () => {
+  it("needs its opening balance entered, keeps its own records, and links only explicitly", async () => {
+    // Nothing exists for Naire until it is set up — no invented opening balance or history.
+    expect(await getBusinessLedger(userId, "naire", ALL)).toBeNull();
+    expect((await listBusinessCards(userId)).find((c) => c.key === "naire")).toMatchObject({ available: true, business: null, balance: null });
+    // A blank opening balance is refused, never assumed to be 0.
+    await expect(setupBusiness(userId, "naire", { name: "Naire", type: "Women's Lifestyle Brand", openingBalance: "", openingDate: "2026-10-01" })).rejects.toThrow(/opening balance/);
+    expect(await getBusinessLedger(userId, "naire", ALL)).toBeNull();
+    await setupBusiness(userId, "naire", { name: "Naire", type: "Women's Lifestyle Brand", openingBalance: "3000", openingDate: "2026-10-01" });
+
+    await enterAlwinExample();
+    const before = { alwin: (await ledger()).overall.closingBalance, rh: (await ledger("returnhex")).overall.closingBalance };
+
+    // Naire's own categories: inventory, marketing, hosting, supplier, income.
+    await add("owner_investment", "Owner capital", 10000, "2026-10-02", "naire");
+    await add("inventory", "Fabric stock", 4500, "2026-10-03", "naire");
+    await add("marketing", "Instagram ads", 800, "2026-10-04", "naire");
+    await add("domain_hosting", "Shop domain", 1200, "2026-10-04", "naire");
+    await add("supplier_payment", "Tailor", 1500, "2026-10-06", "naire");
+    await add("income", "First orders", 3600, "2026-10-08", "naire");
+
+    const n = await ledger("naire");
+    expect(n.rows.map((r) => r.balance / 100)).toEqual([13000, 8500, 7700, 6500, 5000, 8600]);
+    expect(n.overall).toMatchObject({
+      openingBalance: tk(3000),
+      investmentsReceived: tk(10000),
+      income: tk(3600), // revenue kept apart from capital
+      expenses: tk(8000),
+      closingBalance: tk(8600),
+    });
+
+    // None of that touched Alwin BD or ReturnHex.
+    expect((await ledger()).overall.closingBalance).toBe(before.alwin);
+    expect((await ledger("returnhex")).overall.closingBalance).toBe(before.rh);
+
+    // An explicit transfer ReturnHex → Naire moves exactly those two; Alwin BD is unchanged.
+    const naireId = (await listBusinessCards(userId)).find((c) => c.key === "naire")!.business!.id;
+    const ref = await saveInterBusiness(userId, "returnhex", { interKind: "transfer", direction: "out", otherBusinessId: naireId, amount: "2000", date: "2026-10-10" });
+    expect((await ledger("naire")).overall.closingBalance).toBe(tk(10600));
+    expect((await ledger("returnhex")).overall.closingBalance).toBe(before.rh - tk(2000));
+    expect((await ledger()).overall.closingBalance).toBe(before.alwin);
+    const sides = await BusinessTxn.find({ linkRef: ref }).lean();
+    expect(sides.map((x) => x.kind).sort()).toEqual(["transfer_from_business", "transfer_to_business"]);
+
+    // A Naire transaction can't be reached through another business.
+    const naireRow = (await ledger("naire")).rows.find((r) => r.title === "Fabric stock")!;
+    await expect(deleteBusinessTxn(userId, "alwin-bd", naireRow.id)).rejects.toThrow(/not found/i);
+    await expect(saveBusinessTxn(userId, "returnhex", { kind: "inventory", title: "x", amount: "1", date: "2026-10-03" }, naireRow.id)).rejects.toThrow(/not found/i);
+
+    // Deleting the transfer from Naire removes both sides; totals return exactly.
+    const naireSide = (await ledger("naire")).rows.find((r) => r.linkRef === ref)!;
+    await deleteBusinessTxn(userId, "naire", naireSide.id);
+    expect([(await ledger()).overall.closingBalance, (await ledger("returnhex")).overall.closingBalance, (await ledger("naire")).overall.closingBalance]).toEqual([
+      before.alwin,
+      before.rh,
+      tk(8600),
+    ]);
+
+    // Landing cards: each from its own records.
+    const cards = await listBusinessCards(userId);
+    expect(cards.map((c) => [c.key, c.balance])).toEqual([
+      ["alwin-bd", before.alwin],
+      ["returnhex", before.rh],
+      ["naire", tk(8600)],
+    ]);
   });
 });

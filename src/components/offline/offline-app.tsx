@@ -315,7 +315,7 @@ function AccountsView({ snapshot, txns, today, go }: ViewCtx) {
         {(["Alwin BD", "ReturnHex", "Naire"] as const).map((name) => (
           <li key={name} className="rounded-xl border border-dashed bg-card p-5">
             <span className="font-semibold">{name}</span>
-            <span className="mt-2 block text-sm text-muted-foreground">Not set up yet — business accounting is added in the next update.</span>
+            <span className="mt-2 block text-sm text-muted-foreground">Business accounts need an internet connection — open them when you are back online.</span>
           </li>
         ))}
       </ul>

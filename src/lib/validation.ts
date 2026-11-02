@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { parseTaka } from "./money";
+import { BUSINESS_IN_KINDS, BUSINESS_OUT_KINDS, INTER_BUSINESS_KINDS } from "./business/model";
 import { isISODate, isMonth } from "./dates";
 import {
   ACCOUNT_KINDS,
@@ -246,3 +247,47 @@ export const holdingsInputSchema = z.object({
     .length(3),
 });
 export type HoldingsInputRaw = z.input<typeof holdingsInputSchema>;
+
+/* ---------------------------------------------------------------- Business accounting */
+
+const signedAmountField = z.union([z.string(), z.number()]).transform((v, ctx) => {
+  const p = v === "" ? 0 : parseTaka(v);
+  if (p === null || p < 0) {
+    ctx.addIssue({ code: "custom", message: "Enter 0 or more" });
+    return z.NEVER;
+  }
+  return p;
+});
+
+export const businessSetupSchema = z.object({
+  name: z.string().trim().min(1, "Enter the business name").max(80),
+  type: z.string().trim().max(80).default(""),
+  /** Money available when the records begin. Required — never assumed. */
+  openingBalance: signedAmountField,
+  openingDate: dateField,
+});
+export type BusinessSetupRaw = z.input<typeof businessSetupSchema>;
+
+export const businessTxnSchema = z.object({
+  kind: z.enum([...BUSINESS_IN_KINDS, ...BUSINESS_OUT_KINDS]),
+  title: z.string().trim().min(1, "Enter a title").max(160),
+  amount: amountField,
+  date: dateField,
+  party: optionalText(80),
+  note: optionalText(1000),
+});
+export type BusinessTxnRaw = z.input<typeof businessTxnSchema>;
+
+export const interBusinessSchema = z.object({
+  interKind: z.enum(INTER_BUSINESS_KINDS),
+  /** "out": this business pays the other one. "in": this business receives from it. */
+  direction: z.enum(["in", "out"]),
+  otherBusinessId: idField,
+  title: optionalText(160),
+  amount: amountField,
+  date: dateField,
+  note: optionalText(1000),
+  /** Generated once per save on the device, so a retried save never creates a second pair. */
+  ref: z.string().min(8).max(64).optional(),
+});
+export type InterBusinessRaw = z.input<typeof interBusinessSchema>;

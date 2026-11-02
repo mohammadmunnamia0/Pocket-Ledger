@@ -1,0 +1,194 @@
+/**
+ * Phase 2: the reusable Business Accounting System, verified with the Alwin BD example
+ * from the specification (expected balance ৳24,290), against a real MongoDB (throwaway DB).
+ */
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import mongoose from "mongoose";
+import { connectDB, disconnectDB } from "@/lib/db/connect";
+import { Business, BusinessTxn } from "@/lib/db/models";
+import { createUser } from "@/lib/services/setup";
+import { createTransaction } from "@/lib/services/transactions";
+import { getBalanceSummary } from "@/lib/services/finance";
+import {
+  deleteBusinessTxn,
+  getBusinessLedger,
+  listBusinessCards,
+  saveBusinessTxn,
+  saveInterBusiness,
+  setupBusiness,
+} from "@/lib/services/business";
+import { parsePeriod, weekStart } from "@/lib/business/period";
+
+const tk = (n: number) => n * 100;
+const ALL = parsePeriod({});
+let userId = "";
+let counter = 0;
+let returnHexId = "";
+
+beforeAll(async () => {
+  process.loadEnvFile(".env.local");
+  process.env.MONGODB_DB = `pocketledger_test_${Date.now()}`;
+  await connectDB();
+});
+
+afterAll(async () => {
+  const db = mongoose.connection.db;
+  if (db?.databaseName.startsWith("pocketledger_test_")) {
+    for (const c of await db.listCollections({}, { nameOnly: true }).toArray()) await db.dropCollection(c.name);
+  }
+  await disconnectDB();
+});
+
+beforeEach(async () => {
+  userId = await createUser({ name: "Tester", email: `b${Date.now()}${counter++}@example.test`, password: "password123" });
+  await setupBusiness(userId, "alwin-bd", { name: "Alwin BD", type: "Online Clothing Brand", openingBalance: "0", openingDate: "2026-10-05" });
+  // ReturnHex is turned on in Phase 3; here it only exists as the other side of the linked investment.
+  const rh = await Business.create({ userId: new mongoose.Types.ObjectId(userId), key: "returnhex", name: "ReturnHex", type: "IT Firm", openingBalance: tk(24778), openingDate: "2026-10-08" });
+  returnHexId = rh._id.toString();
+});
+
+const add = (kind: string, title: string, amount: number, date: string, key = "alwin-bd") =>
+  saveBusinessTxn(userId, key, { kind: kind as never, title, amount: String(amount), date });
+
+async function enterAlwinExample() {
+  await add("owner_investment", "Rakib Investment", 6000, "2026-10-05");
+  await add("owner_investment", "Munna Investment", 6000, "2026-10-05");
+  await add("owner_investment", "Raiyan Investment", 6000, "2026-10-05");
+  await add("domain_hosting", "Domain Cost", 1510, "2026-10-07");
+  await add("owner_investment", "Tonmoy Investment", 6000, "2026-10-09");
+  // Recorded from Alwin BD as money received from ReturnHex — both sides are created.
+  const ref = await saveInterBusiness(userId, "alwin-bd", { interKind: "investment", direction: "in", otherBusinessId: returnHexId, title: "ReturnHex Investment", amount: "16000", date: "2026-10-09" });
+  await add("product_purchase", "Thrift Winter Product Purchase", 14200, "2026-10-20");
+  return ref;
+}
+const ledger = async (key = "alwin-bd", sp: Record<string, string> = {}) => (await getBusinessLedger(userId, key, parsePeriod(sp)))!;
+
+describe("Alwin BD example", () => {
+  it("reproduces the expected history and ends at ৳24,290", async () => {
+    await enterAlwinExample();
+    const l = await ledger();
+    expect(l.rows.map((r) => [r.date, r.title, r.balance / 100])).toEqual([
+      ["2026-10-05", "Rakib Investment", 6000],
+      ["2026-10-05", "Munna Investment", 12000],
+      ["2026-10-05", "Raiyan Investment", 18000],
+      ["2026-10-07", "Domain Cost", 16490],
+      ["2026-10-09", "Tonmoy Investment", 22490],
+      ["2026-10-09", "ReturnHex Investment", 38490],
+      ["2026-10-20", "Thrift Winter Product Purchase", 24290],
+    ]);
+    expect(l.overall).toMatchObject({
+      openingBalance: 0,
+      moneyIn: tk(40000),
+      moneyOut: tk(15710),
+      investmentsReceived: tk(40000), // capital: 4 owners + ReturnHex — not revenue
+      income: 0,
+      expenses: tk(15710),
+      closingBalance: tk(24290),
+    });
+    const rh = l.rows.find((r) => r.title === "ReturnHex Investment")!;
+    expect([rh.kind, rh.other?.name, rh.interKind]).toEqual(["investment_from_business", "ReturnHex", "investment"]);
+
+    // The other side exists once in ReturnHex, linked by the same reference.
+    const r = await ledger("returnhex");
+    expect(r.rows.map((x) => [x.title, x.kind, x.amount])).toEqual([["ReturnHex Investment", "investment_in_business", tk(16000)]]);
+    expect(r.rows[0].linkRef).toBe(rh.linkRef);
+    expect(r.overall.closingBalance).toBe(tk(24778 - 16000));
+
+    const cards = await listBusinessCards(userId);
+    expect(cards.find((c) => c.key === "alwin-bd")!.balance).toBe(tk(24290));
+  });
+
+  it("editing and deleting recalculate the running balance; linked changes update both businesses", async () => {
+    const ref = await enterAlwinExample();
+    const domain = (await ledger()).rows.find((r) => r.title === "Domain Cost")!;
+    await saveBusinessTxn(userId, "alwin-bd", { kind: "domain_hosting", title: "Domain Cost", amount: "1600", date: "2026-10-07" }, domain.id);
+    let l = await ledger();
+    expect(l.rows.map((r) => r.balance / 100)).toEqual([6000, 12000, 18000, 16400, 22400, 38400, 24200]);
+
+    await deleteBusinessTxn(userId, "alwin-bd", domain.id);
+    l = await ledger();
+    expect(l.overall.closingBalance).toBe(tk(25800));
+
+    // Edit the linked investment from Alwin BD → ReturnHex changes too.
+    await saveInterBusiness(userId, "alwin-bd", { interKind: "investment", direction: "in", otherBusinessId: returnHexId, title: "ReturnHex Investment", amount: "15000", date: "2026-10-09" }, ref);
+    expect((await ledger()).overall.closingBalance).toBe(tk(24800));
+    expect((await ledger("returnhex")).overall.closingBalance).toBe(tk(24778 - 15000));
+    expect(await BusinessTxn.countDocuments({ linkRef: ref })).toBe(2);
+
+    // It can't be edited as an ordinary transaction (that would split the pair).
+    const linked = (await ledger()).rows.find((r) => r.linkRef)!;
+    await expect(saveBusinessTxn(userId, "alwin-bd", { kind: "other_in", title: "x", amount: "1", date: "2026-10-09" }, linked.id)).rejects.toThrow(/inter-business/);
+
+    // Deleting it from ReturnHex removes both sides.
+    const rhSide = (await ledger("returnhex")).rows[0];
+    await deleteBusinessTxn(userId, "returnhex", rhSide.id);
+    expect(await BusinessTxn.countDocuments({ linkRef: ref })).toBe(0);
+    expect((await ledger()).overall.closingBalance).toBe(tk(9800));
+    expect((await ledger("returnhex")).overall.closingBalance).toBe(tk(24778));
+  });
+
+  it("date filters: opening + money in − money out = closing for a date, week, month and range", async () => {
+    await enterAlwinExample();
+    const pick = (l: Awaited<ReturnType<typeof ledger>>) => [l.period.openingBalance, l.period.moneyIn, l.period.moneyOut, l.period.closingBalance].map((v) => v / 100);
+
+    expect(pick(await ledger("alwin-bd", { period: "date", date: "2026-10-09" }))).toEqual([16490, 22000, 0, 38490]);
+    expect(weekStart("2026-10-09")).toBe("2026-10-03"); // Saturday
+    expect(pick(await ledger("alwin-bd", { period: "week", date: "2026-10-09" }))).toEqual([0, 40000, 1510, 38490]);
+    expect(pick(await ledger("alwin-bd", { period: "month", month: "2026-10" }))).toEqual([0, 40000, 15710, 24290]);
+    const range = await ledger("alwin-bd", { period: "range", from: "2026-10-07", to: "2026-10-20" });
+    expect(pick(range)).toEqual([18000, 22000, 15710, 24290]);
+    expect(range.rows.map((r) => r.balance / 100)).toEqual([16490, 22490, 38490, 24290]); // true balances, not period sums
+    expect(pick(await ledger("alwin-bd", { period: "month", month: "2026-11" }))).toEqual([24290, 0, 0, 24290]);
+  });
+});
+
+describe("separation and safeguards", () => {
+  it("keeps every business's records and balance separate, and never touches personal finance", async () => {
+    await createTransaction(userId, { type: "income", title: "Salary", amount: "20000", date: "2026-10-01", incomeKind: "salary" });
+    const personalBefore = (await getBalanceSummary(userId, "2026-12-31")).spendable;
+    await enterAlwinExample();
+    const rhBefore = (await ledger("returnhex")).overall.closingBalance;
+
+    // An ordinary Alwin BD transaction doesn't move ReturnHex.
+    const id = await add("marketing", "Facebook ads", 500, "2026-10-21");
+    expect((await ledger("returnhex")).overall.closingBalance).toBe(rhBefore);
+    expect((await ledger()).overall.closingBalance).toBe(tk(23790));
+
+    // A transaction can only be changed through its own business.
+    await expect(saveBusinessTxn(userId, "returnhex", { kind: "marketing", title: "x", amount: "1", date: "2026-10-21" }, id)).rejects.toThrow(/not found/i);
+    await expect(deleteBusinessTxn(userId, "returnhex", id)).rejects.toThrow(/not found/i);
+    expect((await ledger()).overall.closingBalance).toBe(tk(23790));
+
+    // Another user's business is invisible.
+    const stranger = await createUser({ name: "Other", email: `o${Date.now()}@example.test`, password: "password123" });
+    await expect(deleteBusinessTxn(stranger, "alwin-bd", id)).rejects.toThrow(/not found/i);
+
+    expect((await getBalanceSummary(userId, "2026-12-31")).spendable).toBe(personalBefore);
+  });
+
+  it("no duplicate inter-business pairs on retry; dates before the opening balance are refused", async () => {
+    const raw = { interKind: "transfer" as const, direction: "out" as const, otherBusinessId: returnHexId, amount: "1000", date: "2026-10-10", ref: "retry-ref-0001" };
+    await add("owner_investment", "Seed", 5000, "2026-10-05");
+    await saveInterBusiness(userId, "alwin-bd", raw);
+    await saveInterBusiness(userId, "alwin-bd", raw);
+    expect(await BusinessTxn.countDocuments({ linkRef: "retry-ref-0001" })).toBe(2);
+    expect((await ledger()).overall.closingBalance).toBe(tk(4000));
+
+    await expect(add("expense", "Too early", 10, "2026-10-01")).rejects.toThrow(/records start on/);
+    // ReturnHex's records start 8 Oct, so a linked entry on 6 Oct is refused for both.
+    await expect(saveInterBusiness(userId, "alwin-bd", { ...raw, ref: "retry-ref-0002", date: "2026-10-06" })).rejects.toThrow(/ReturnHex's records start/);
+    expect(await BusinessTxn.countDocuments({ linkRef: "retry-ref-0002" })).toBe(0);
+
+    // Businesses not yet turned on can't be set up from the app.
+    await expect(setupBusiness(userId, "naire", { name: "Naire", openingBalance: "0", openingDate: "2026-10-01" })).rejects.toThrow(/isn't available/);
+  });
+
+  it("renaming a business keeps its history (records point at its id, not its name)", async () => {
+    await enterAlwinExample();
+    await setupBusiness(userId, "alwin-bd", { name: "Alwin BD Fashion", type: "Online Clothing Brand", openingBalance: "0", openingDate: "2026-10-05" });
+    const l = await ledger();
+    expect([l.business.name, l.overall.closingBalance, l.rows.length]).toEqual(["Alwin BD Fashion", tk(24290), 7]);
+    expect((await ledger("returnhex")).rows[0].other?.name).toBe("Alwin BD Fashion");
+    await expect(setupBusiness(userId, "alwin-bd", { name: "Alwin BD", openingBalance: "0", openingDate: "2026-10-06" })).rejects.toThrow(/on or before the first transaction/);
+  });
+});

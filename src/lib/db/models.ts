@@ -260,6 +260,79 @@ const InvestmentSchema = new Schema<InvestmentDoc>(
   { timestamps: true },
 );
 
+/* ------------------------------------------------------------------ Businesses */
+
+/**
+ * A business account (Alwin BD, ReturnHex, Naire). Its _id is the permanent id every business
+ * transaction points at; `key` is the permanent link name. The name can change freely.
+ */
+export interface BusinessDoc {
+  _id: Types.ObjectId;
+  userId: Types.ObjectId;
+  key: string;
+  name: string;
+  type: string;
+  /** Money available when the records begin (poisha) — not income and not investment. */
+  openingBalance: number;
+  openingDate: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const BusinessSchema = new Schema<BusinessDoc>(
+  {
+    userId: { type: Schema.Types.ObjectId, required: true },
+    key: { type: String, required: true, trim: true, maxlength: 40 },
+    name: { type: String, required: true, trim: true, maxlength: 80 },
+    type: { type: String, trim: true, maxlength: 80, default: "" },
+    openingBalance: { type: Number, required: true, validate: { validator: Number.isSafeInteger, message: "Amount must be whole poisha" } },
+    openingDate: { ...isoDate, required: true },
+  },
+  { timestamps: true },
+);
+BusinessSchema.index({ userId: 1, key: 1 }, { unique: true });
+
+/**
+ * Money in or out of one business. An inter-business transaction is two of these — one in
+ * each business — sharing `linkRef`, created, edited and deleted together.
+ */
+export interface BusinessTxnDoc {
+  _id: Types.ObjectId;
+  userId: Types.ObjectId;
+  businessId: Types.ObjectId;
+  kind: string;
+  title: string;
+  amount: number;
+  date: string;
+  party?: string | null;
+  note?: string | null;
+  /** Shared by both sides of an inter-business transaction. */
+  linkRef?: string | null;
+  /** The other business of a linked transaction. */
+  otherBusinessId?: Types.ObjectId | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const BusinessTxnSchema = new Schema<BusinessTxnDoc>(
+  {
+    userId: { type: Schema.Types.ObjectId, required: true },
+    businessId: { type: Schema.Types.ObjectId, required: true },
+    kind: { type: String, required: true, maxlength: 40 },
+    title: { type: String, required: true, trim: true, maxlength: 160 },
+    amount: { ...money, min: 1 },
+    date: { ...isoDate, required: true },
+    party: { type: String, trim: true, maxlength: 80, default: null },
+    note: { type: String, trim: true, maxlength: 1000, default: null },
+    linkRef: { type: String, default: null },
+    otherBusinessId: { type: Schema.Types.ObjectId, default: null },
+  },
+  { timestamps: true },
+);
+BusinessTxnSchema.index({ userId: 1, businessId: 1, date: 1, createdAt: 1 });
+// One side per business per link: a retried inter-business save can never add a duplicate.
+BusinessTxnSchema.index({ userId: 1, linkRef: 1, businessId: 1 }, { unique: true, partialFilterExpression: { linkRef: { $type: "string" } } });
+
 /* ------------------------------------------------------------------ Savings goals */
 
 export interface SavingsGoalDoc {
@@ -590,6 +663,8 @@ export const LoginAttempt = getModel<LoginAttemptDoc>("LoginAttempt", LoginAttem
 export const SyncOp = getModel<SyncOpDoc>("SyncOp", SyncOpSchema);
 export const Loan = getModel<LoanDoc>("Loan", LoanSchema);
 export const Investment = getModel<InvestmentDoc>("Investment", InvestmentSchema);
+export const Business = getModel<BusinessDoc>("Business", BusinessSchema);
+export const BusinessTxn = getModel<BusinessTxnDoc>("BusinessTxn", BusinessTxnSchema);
 
 export function oid(id: string | Types.ObjectId): Types.ObjectId {
   return typeof id === "string" ? new Types.ObjectId(id) : id;

@@ -5,6 +5,8 @@ import { CardsSkeleton, PageHeader } from "@/components/common";
 import { Money } from "@/components/money";
 import { requireUser } from "@/lib/auth/session";
 import { getBalanceSummary } from "@/lib/services/finance";
+import { listBusinessCards } from "@/lib/services/business";
+import { BUSINESSES } from "@/lib/business/registry";
 import { todayISO } from "@/lib/dates";
 import { cn } from "@/lib/utils";
 
@@ -20,16 +22,11 @@ export default function AccountsHomePage() {
   );
 }
 
-/** The three businesses. Their accounting is added in the next phase. */
-const BUSINESSES = [
-  { name: "Alwin BD", type: "Online Clothing Brand", icon: Shirt },
-  { name: "ReturnHex", type: "IT Firm", icon: Code2 },
-  { name: "Naire", type: "Women's Lifestyle Brand", icon: Sparkles },
-] as const;
+const ICONS = { shirt: Shirt, code: Code2, sparkles: Sparkles } as const;
 
 async function AccountCards() {
   const user = await requireUser();
-  const { spendable } = await getBalanceSummary(user.id, todayISO());
+  const [{ spendable }, businesses] = await Promise.all([getBalanceSummary(user.id, todayISO()), listBusinessCards(user.id)]);
   return (
     <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       <li>
@@ -42,22 +39,49 @@ async function AccountCards() {
           <span className="text-3xl font-semibold tracking-tight">
             <Money value={spendable} tone="auto" />
           </span>
-          <span className="mt-3 flex items-center gap-1 text-sm font-medium text-primary">
-            Open dashboard <ChevronRight className="size-4 transition-transform group-hover:translate-x-0.5" aria-hidden />
-          </span>
+          <OpenLabel text="Open dashboard" />
         </Link>
       </li>
-      {BUSINESSES.map((b) => (
-        <li key={b.name}>
-          {/* Not a link yet: business accounting arrives in the next phase. */}
-          <div className="flex h-full flex-col rounded-xl border border-dashed bg-card p-5" aria-label={`${b.name} — not set up yet`}>
-            <AccountHead icon={b.icon} name={b.name} type={b.type} muted />
-            <span className="mt-4 text-xs font-medium text-muted-foreground">Business account</span>
-            <span className="text-sm text-muted-foreground">Not set up yet — business accounting is added in the next update.</span>
-          </div>
-        </li>
-      ))}
+      {businesses.map((b) => {
+        const icon = ICONS[BUSINESSES.find((x) => x.key === b.key)!.icon];
+        if (!b.available) {
+          return (
+            <li key={b.key}>
+              {/* Not a link yet: this business is added in a later phase. */}
+              <div className="flex h-full flex-col rounded-xl border border-dashed bg-card p-5" aria-label={`${b.name} — not set up yet`}>
+                <AccountHead icon={icon} name={b.name} type={b.type} muted />
+                <span className="mt-4 text-xs font-medium text-muted-foreground">Business account</span>
+                <span className="text-sm text-muted-foreground">Not set up yet — added in a later update.</span>
+              </div>
+            </li>
+          );
+        }
+        return (
+          <li key={b.key}>
+            <Link href={`/business/${b.key}`} className="group flex h-full flex-col rounded-xl border bg-card p-5 transition-colors hover:border-foreground/20">
+              <AccountHead icon={icon} name={b.name} type={b.type} />
+              <span className="mt-4 text-xs font-medium text-muted-foreground">Available balance</span>
+              {b.balance === null ? (
+                <span className="text-sm text-muted-foreground">Not set up yet — enter its opening balance to start.</span>
+              ) : (
+                <span className="text-3xl font-semibold tracking-tight">
+                  <Money value={b.balance} tone="auto" />
+                </span>
+              )}
+              <OpenLabel text={b.balance === null ? "Set up" : "Open dashboard"} />
+            </Link>
+          </li>
+        );
+      })}
     </ul>
+  );
+}
+
+function OpenLabel({ text }: { text: string }) {
+  return (
+    <span className="mt-3 flex items-center gap-1 text-sm font-medium text-primary">
+      {text} <ChevronRight className="size-4 transition-transform group-hover:translate-x-0.5" aria-hidden />
+    </span>
   );
 }
 

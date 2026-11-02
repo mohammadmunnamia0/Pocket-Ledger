@@ -14,6 +14,7 @@ import {
   PiggyBank,
   PlusCircle,
   Settings,
+  Store,
   TrendingUp,
   Upload,
   Users,
@@ -30,6 +31,7 @@ export const OWNER_EMAIL = "mohammadmunna4141@gmail.com";
 export const NAV_ITEMS = [
   { href: "/", label: "All accounts", icon: LayoutGrid, help: "home" },
   { href: "/personal", label: "Dashboard", icon: LayoutDashboard, help: "dashboard" },
+  { href: "/business/alwin-bd", label: "Alwin BD", icon: Store, help: "business" },
   { href: "/transactions", label: "Transactions", icon: ArrowLeftRight, help: "transactions" },
   { href: "/expenses/new", label: "Add Expense", icon: PlusCircle, help: "addExpense" },
   { href: "/income", label: "Income & Salary", icon: Wallet, help: "income" },

@@ -32,6 +32,16 @@ async function EditForm({ params }: { params: Promise<{ id: string }> }) {
   const [detail, ctx] = await Promise.all([getTransactionDetail(user.id, id), getFormContext(user.id)]);
   if (!detail) notFound();
   const t = detail.txn;
+  if (t.loanId || t.investmentId) {
+    return (
+      <Section>
+        <p className="text-sm text-muted-foreground">
+          This entry belongs to {t.loanId ? "a loan — change it from Lending & Borrowing" : "an investment — change it from Investments"}, so the
+          {t.loanId ? " loan" : " investment"} and your balances stay consistent.
+        </p>
+      </Section>
+    );
+  }
   if (t.type.startsWith("savings")) {
     return (
       <Section>

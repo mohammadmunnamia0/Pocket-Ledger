@@ -50,6 +50,8 @@ export function toLocalTxn(raw: TxnInputRaw, snap: Snapshot, id: string, created
     personName: d.personId ? (lookups.persons.find((p) => p.id === d.personId)?.name ?? null) : null,
     goalId: d.goalId,
     goalName: d.goalId ? (lookups.goals.find((g) => g.id === d.goalId)?.name ?? null) : null,
+    loanId: d.loanId,
+    investmentId: d.investmentId,
     notes: d.notes ?? null,
     incomeKind: d.income?.kind ?? null,
     incomeLabel: d.income?.label ?? null,

@@ -1,21 +1,22 @@
 import Link from "next/link";
-import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, PiggyBank } from "lucide-react";
+import { ArrowDownLeft, ArrowLeftRight, ArrowUpRight, HandCoins, PiggyBank, TrendingUp } from "lucide-react";
 import { Money } from "@/components/money";
 import { StatusBadge } from "@/components/common";
 import { formatDate } from "@/lib/dates";
 import type { TxnDTO } from "@/lib/services/transactions";
 import { TXN_TYPE_LABELS } from "@/lib/labels";
+import { IN_TYPES, OUT_TYPES } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 
 export function txnSign(t: Pick<TxnDTO, "type">): 1 | -1 | 0 {
-  if (t.type === "income" || t.type === "savings_withdrawal") return 1;
-  if (t.type === "expense" || t.type === "savings_deposit") return -1;
+  if (IN_TYPES.includes(t.type)) return 1;
+  if (OUT_TYPES.includes(t.type)) return -1;
   return 0;
 }
 
 export function TxnIcon({ type, className }: { type: TxnDTO["type"]; className?: string }) {
   const Icon =
-    type === "income" ? ArrowDownLeft : type === "transfer" ? ArrowLeftRight : type.startsWith("savings") ? PiggyBank : ArrowUpRight;
+    type === "income" ? ArrowDownLeft : type === "transfer" ? ArrowLeftRight : type.startsWith("savings") ? PiggyBank : type.startsWith("loan_") ? HandCoins : type.startsWith("invest_") ? TrendingUp : ArrowUpRight;
   return (
     <span
       className={cn(

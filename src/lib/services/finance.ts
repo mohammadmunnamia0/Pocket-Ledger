@@ -85,9 +85,13 @@ export async function getAccountBalances(userId: string): Promise<Map<string, nu
     const a = _id.a?.toString();
     switch (_id.type) {
       case "income":
+      case "loan_in":
+      case "invest_in":
         add(a, v);
         break;
       case "expense":
+      case "loan_out":
+      case "invest_out":
         add(a, -v);
         break;
       case "transfer":
@@ -137,6 +141,10 @@ export interface PeriodReport {
   savingsWithdrawals: number;
   /** Investments + net savings moves. */
   savingsAndTransfers: number;
+  /** Borrowed money, loan repayments received, investment capital returned (not income). */
+  otherInflows: number;
+  /** Money lent, or repaid to a lender (not an expense). */
+  loansOut: number;
   totalOutflows: number;
   closingBalance: number;
   pendingTotal: number;

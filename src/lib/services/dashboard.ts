@@ -6,6 +6,8 @@ import { getLookups } from "./lookups";
 import { getMonthlySeries, getPeriodReport } from "./finance";
 import { getUpcomingBills } from "./bills";
 import { listGoals } from "./savings";
+import { listLoans, summarizeLoans } from "./loans";
+import { getHoldings } from "./holdings";
 import { listTransactions, toTxnDTO } from "./transactions";
 
 /**
@@ -23,7 +25,7 @@ export async function getDashboard(userId: string) {
   const month = monthOf(today);
 
   const lookups = await getLookups(userId);
-  const [allTxns, allocations, persons, personAllocations, mtd, series, upcoming, recent, pendingDocs, goals] = await Promise.all([
+  const [allTxns, allocations, persons, personAllocations, mtd, series, upcoming, recent, pendingDocs, goals, loans, holdings] = await Promise.all([
     Transaction.find({ userId: uid }).lean(),
     FundingAllocation.find({ userId: uid }, { consumerId: 1, sourceId: 1, amount: 1, consumerDate: 1 }).lean(),
     Person.find({ userId: uid }, { name: 1 }).lean(),
@@ -34,6 +36,8 @@ export async function getDashboard(userId: string) {
     listTransactions(userId, { pageSize: 8 }, lookups),
     Transaction.find({ userId: uid, status: "pending" }).sort({ date: 1 }).limit(8).lean(),
     listGoals(userId, today),
+    listLoans(userId, today),
+    getHoldings(userId),
   ]);
 
   const figures = computeDashboardFigures({
@@ -71,6 +75,9 @@ export async function getDashboard(userId: string) {
     pending: pendingDocs.map((p) => toTxnDTO(p, lookups)),
     upcoming,
     goals: goals.filter((g) => g.status === "active"),
+    lent: summarizeLoans(loans, "lent"),
+    owed: summarizeLoans(loans, "borrowed"),
+    holdings,
   };
 }
 

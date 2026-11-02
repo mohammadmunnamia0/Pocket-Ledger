@@ -12,6 +12,9 @@ import {
   TXN_STATUSES,
   TXN_TYPES,
   CATEGORY_NATURES,
+  HOLDING_KINDS,
+  INVESTMENT_KINDS,
+  LOAN_DIRECTIONS,
 } from "./constants";
 
 const emptyToUndefined = (v: unknown) => (v === "" || v === null ? undefined : v);
@@ -79,6 +82,8 @@ export const txnInputSchema = z
     toAccountId: optionalId,
     personId: optionalId,
     goalId: optionalId,
+    loanId: optionalId,
+    investmentId: optionalId,
     notes: optionalText(2000),
     incomeKind: z.enum(INCOME_KINDS).optional(),
     incomeLabel: optionalText(80),
@@ -102,6 +107,12 @@ export const txnInputSchema = z
     }
     if ((v.type === "savings_deposit" || v.type === "savings_withdrawal") && !v.goalId) {
       ctx.addIssue({ code: "custom", path: ["goalId"], message: "Choose a savings goal" });
+    }
+    if ((v.type === "loan_out" || v.type === "loan_in") && !v.loanId) {
+      ctx.addIssue({ code: "custom", path: ["loanId"], message: "Loan entries are recorded from Lending & Borrowing" });
+    }
+    if ((v.type === "invest_out" || v.type === "invest_in") && !v.investmentId) {
+      ctx.addIssue({ code: "custom", path: ["investmentId"], message: "Investment entries are recorded from Investments" });
     }
     if (v.bill?.coverageFrom && v.bill.coverageTo && v.bill.coverageFrom > v.bill.coverageTo) {
       ctx.addIssue({ code: "custom", path: ["bill", "coverageTo"], message: "Coverage end is before its start" });
@@ -163,3 +174,75 @@ export const alertPrefsSchema = z.object({
   spendWarnPct: z.coerce.number().int().min(10).max(100),
   savingsReminderDay: z.coerce.number().int().min(0).max(28),
 });
+
+/* ---------------------------------------------------------------- Lending, borrowing, investments, holdings */
+
+export const loanInputSchema = z
+  .object({
+    direction: z.enum(LOAN_DIRECTIONS),
+    person: z.string().trim().min(1, "Enter the person's name").max(80),
+    amount: amountField,
+    date: dateField,
+    dueDate: optionalDate,
+    /** Lent: the account the money left. Borrowed: the account it arrived in. */
+    accountId: idField,
+    note: optionalText(500),
+  })
+  .refine((v) => !v.dueDate || v.dueDate >= v.date, { path: ["dueDate"], message: "The expected date is before the loan date" });
+export type LoanInputRaw = z.input<typeof loanInputSchema>;
+
+export const loanRepaymentSchema = z.object({
+  amount: amountField,
+  /** Interest on top of the principal (income when lent, an expense when borrowed). */
+  interest: nonNegativeAmountField,
+  date: dateField,
+  accountId: idField,
+  note: optionalText(500),
+});
+export type LoanRepaymentRaw = z.input<typeof loanRepaymentSchema>;
+
+export const investmentInputSchema = z.object({
+  name: z.string().trim().min(1, "Enter a name").max(80),
+  kind: z.enum(INVESTMENT_KINDS),
+  amount: amountField,
+  date: dateField,
+  accountId: idField,
+  currentValue: z.preprocess(emptyToUndefined, nonNegativeAmountField.optional()),
+  note: optionalText(500),
+});
+export type InvestmentInputRaw = z.input<typeof investmentInputSchema>;
+
+export const investmentReturnSchema = z
+  .object({
+    /** Part of the money you put in that came back — not income. */
+    capital: nonNegativeAmountField,
+    /** Earnings on top — income. */
+    profit: nonNegativeAmountField,
+    date: dateField,
+    accountId: idField,
+    note: optionalText(500),
+  })
+  .refine((v) => v.capital + v.profit > 0, { path: ["capital"], message: "Enter the capital returned, the profit, or both" });
+export type InvestmentReturnRaw = z.input<typeof investmentReturnSchema>;
+
+/** New Bank / Cash / Mobile Banking split of the current balance (the total must not change). */
+export const holdingsInputSchema = z.object({
+  date: dateField,
+  holdings: z
+    .array(
+      z.object({
+        kind: z.enum(HOLDING_KINDS),
+        amount: z.union([z.string(), z.number()]).transform((v, ctx) => {
+          const p = v === "" ? 0 : parseTaka(v);
+          if (p === null || p < 0) {
+            ctx.addIssue({ code: "custom", message: "Enter 0 or more" });
+            return z.NEVER;
+          }
+          return p;
+        }),
+        note: optionalText(200),
+      }),
+    )
+    .length(3),
+});
+export type HoldingsInputRaw = z.input<typeof holdingsInputSchema>;

@@ -11,7 +11,7 @@ import { DeleteTxnButton, MarkPaidButton } from "@/components/txn-actions";
 import { HelpButton } from "@/components/help";
 import { requireUser } from "@/lib/auth/session";
 import { getTransactionDetail } from "@/lib/services/transactions";
-import { isObjectId } from "@/lib/db/models";
+import { IN_TYPES, isObjectId } from "@/lib/db/models";
 import { formatDate, formatMonth } from "@/lib/dates";
 import { formatTaka } from "@/lib/money";
 import { BILL_TYPE_LABELS, INCOME_KIND_LABELS, PAYMENT_METHOD_LABELS, TXN_TYPE_LABELS } from "@/lib/labels";
@@ -73,12 +73,21 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
         </div>
         <div className="flex flex-wrap gap-2">
           {t.status === "pending" && <MarkPaidButton id={t.id} dueDate={t.date} />}
-          {!t.type.startsWith("savings") && (
-            <ButtonLink href={`/transactions/${t.id}/edit`} variant="outline" size="sm">
-              <Pencil /> Edit
+          {t.loanId || t.investmentId ? (
+            // Loan / investment money changes only from its own page, so both stay consistent.
+            <ButtonLink href={t.loanId ? "/loans" : "/investments"} variant="outline" size="sm">
+              Manage in {t.loanId ? "Lending & Borrowing" : "Investments"}
             </ButtonLink>
+          ) : (
+            <>
+              {!t.type.startsWith("savings") && (
+                <ButtonLink href={`/transactions/${t.id}/edit`} variant="outline" size="sm">
+                  <Pencil /> Edit
+                </ButtonLink>
+              )}
+              <DeleteTxnButton id={t.id} title={title} updatedAt={t.updatedAt} redirectTo="/transactions" />
+            </>
           )}
-          <DeleteTxnButton id={t.id} title={title} updatedAt={t.updatedAt} redirectTo="/transactions" />
         </div>
       </div>
 
@@ -138,7 +147,7 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
         </Section>
       )}
 
-      {(t.type === "income" || t.type === "savings_withdrawal") && (
+      {IN_TYPES.includes(t.type) && (
         <Section
           title="Spending funded by this money"
           description={`${formatTaka(funds.reduce((s, f) => s + f.amount, 0))} used of ${formatTaka(t.amount)}`}

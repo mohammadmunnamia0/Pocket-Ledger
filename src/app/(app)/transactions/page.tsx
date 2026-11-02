@@ -147,12 +147,16 @@ async function TransactionsView({ searchParams }: { searchParams: Promise<SP> })
                     <td className="px-3 py-2.5">
                       <div className="flex justify-end gap-0.5">
                         {t.status === "pending" && <MarkPaidButton id={t.id} dueDate={t.date} size="xs" />}
-                        {!t.type.startsWith("savings") && (
-                          <ButtonLink href={`/transactions/${t.id}/edit`} variant="ghost" size="icon-xs" aria-label="Edit">
-                            <Pencil />
-                          </ButtonLink>
+                        {!t.loanId && !t.investmentId && (
+                          <>
+                            {!t.type.startsWith("savings") && (
+                              <ButtonLink href={`/transactions/${t.id}/edit`} variant="ghost" size="icon-xs" aria-label="Edit">
+                                <Pencil />
+                              </ButtonLink>
+                            )}
+                            <DeleteTxnButton id={t.id} title={t.incomeLabel || t.title} updatedAt={t.updatedAt} iconOnly />
+                          </>
                         )}
-                        <DeleteTxnButton id={t.id} title={t.incomeLabel || t.title} updatedAt={t.updatedAt} iconOnly />
                       </div>
                     </td>
                   </tr>

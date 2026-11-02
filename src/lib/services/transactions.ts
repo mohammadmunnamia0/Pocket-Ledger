@@ -4,6 +4,11 @@ import {
   Account,
   Category,
   FundingAllocation,
+  IN_TYPES,
+  LINKED_TYPES,
+  OUT_TYPES,
+  Investment,
+  Loan,
   Person,
   SavingsGoal,
   Transaction,
@@ -44,6 +49,8 @@ export interface TxnDTO {
   personName: string | null;
   goalId: string | null;
   goalName: string | null;
+  loanId: string | null;
+  investmentId: string | null;
   notes: string | null;
   incomeKind: IncomeKind | null;
   incomeLabel: string | null;
@@ -86,6 +93,8 @@ export function toTxnDTO(t: LeanTxn, lookups: Lookups): TxnDTO {
     personName: t.personId ? (lookups.persons.find((p) => p.id === t.personId!.toString())?.name ?? null) : null,
     goalId: t.goalId?.toString() ?? null,
     goalName: t.goalId ? (lookups.goals.find((g) => g.id === t.goalId!.toString())?.name ?? null) : null,
+    loanId: t.loanId?.toString() ?? null,
+    investmentId: t.investmentId?.toString() ?? null,
     notes: t.notes ?? null,
     incomeKind: t.income?.kind ?? null,
     incomeLabel: t.income?.label ?? null,
@@ -117,13 +126,14 @@ export function toTxnDTO(t: LeanTxn, lookups: Lookups): TxnDTO {
 
 async function assertOwned(
   userId: Types.ObjectId,
-  model: { countDocuments: (q: object) => { exec: () => Promise<number> } },
+  model: { countDocuments: (q: object) => { session: (s: ClientSession | null) => { exec: () => Promise<number> } } },
   ids: (string | undefined)[],
   label: string,
+  session?: ClientSession,
 ) {
   const unique = [...new Set(ids.filter((x): x is string => !!x))];
   if (unique.length === 0) return;
-  const found = await model.countDocuments({ userId, _id: { $in: unique.map((i) => oid(i)) } }).exec();
+  const found = await model.countDocuments({ userId, _id: { $in: unique.map((i) => oid(i)) } }).session(session ?? null).exec();
   if (found !== unique.length) throw new AppError(`Selected ${label} does not exist`);
 }
 
@@ -132,7 +142,7 @@ async function assertOwned(
  * breakdown totals are derived from items, only expenses can be pending, references
  * must belong to the user.
  */
-async function normalize(userId: string, input: TxnInput): Promise<Omit<TransactionDoc, "_id" | "createdAt" | "updatedAt">> {
+async function normalize(userId: string, input: TxnInput, session?: ClientSession): Promise<Omit<TransactionDoc, "_id" | "createdAt" | "updatedAt">> {
   const uid = oid(userId);
   const isExpense = input.type === "expense";
 
@@ -153,6 +163,9 @@ async function normalize(userId: string, input: TxnInput): Promise<Omit<Transact
     assertOwned(uid, Account, [accountId, input.type === "transfer" ? input.toAccountId : undefined], "account"),
     assertOwned(uid, Person, [input.personId], "person"),
     assertOwned(uid, SavingsGoal, [input.type.startsWith("savings_") ? input.goalId : undefined], "savings goal"),
+    // Inside the caller's transaction, so a loan or investment created in it is visible.
+    assertOwned(uid, Loan, [input.loanId], "loan", session),
+    assertOwned(uid, Investment, [input.investmentId], "investment", session),
   ]);
 
   if (input.fundingSourceId) {
@@ -171,6 +184,8 @@ async function normalize(userId: string, input: TxnInput): Promise<Omit<Transact
     toAccountId: toId(d.toAccountId),
     personId: toId(d.personId),
     goalId: toId(d.goalId),
+    loanId: toId(d.loanId),
+    investmentId: toId(d.investmentId),
     income: d.income as TransactionDoc["income"],
     items: d.items.map((i) => ({ ...i, categoryId: toId(i.categoryId) })) as TransactionDoc["items"],
     bill: d.bill ? { ...d.bill, recurringBillId: toId(d.bill.recurringBillId) } : null,
@@ -202,11 +217,12 @@ export async function assertGoalNeverNegative(userId: string, goalId: Types.Obje
 export async function createTransaction(
   userId: string,
   raw: TxnInputRaw,
-  opts: { session?: ClientSession; importBatch?: string; clientRef?: string } = {},
+  opts: { session?: ClientSession; importBatch?: string; clientRef?: string; linked?: boolean } = {},
 ): Promise<string> {
   const input = txnInputSchema.parse(raw);
+  if (!opts.linked) assertNotLinked(input);
   await connectDB();
-  const doc = await normalize(userId, input);
+  const doc = await normalize(userId, input, opts.session);
   if (opts.importBatch) doc.importBatch = opts.importBatch;
   if (opts.clientRef) doc.clientRef = opts.clientRef;
 
@@ -241,19 +257,28 @@ export async function createTransactionOnce(userId: string, raw: TxnInputRaw, cl
   return existing ? existing._id.toString() : createTransaction(userId, raw, { clientRef });
 }
 
-export async function updateTransaction(userId: string, id: string, raw: TxnInputRaw, opts: { opId?: string } = {}): Promise<void> {
+export async function updateTransaction(
+  userId: string,
+  id: string,
+  raw: TxnInputRaw,
+  opts: { opId?: string; session?: ClientSession; linked?: boolean } = {},
+): Promise<void> {
   const input = txnInputSchema.parse(raw);
   await connectDB();
   const uid = oid(userId);
-  const existing = await Transaction.findOne({ _id: oid(id), userId: uid }).lean();
+  const existing = await Transaction.findOne({ _id: oid(id), userId: uid }, null, { session: opts.session }).lean();
   if (!existing) throw new NotFoundError("Transaction");
+  if (!opts.linked) {
+    assertNotLinked(existing);
+    assertNotLinked(input);
+  }
   if (existing.type !== input.type) throw new AppError("The transaction type cannot be changed. Delete it and add a new one.");
 
-  const next = await normalize(userId, input);
+  const next = await normalize(userId, input, opts.session);
   next.importBatch = existing.importBatch ?? null;
   if (opts.opId) next.lastOpId = opts.opId;
 
-  await withLedger(userId, async (session) => {
+  const run = async (session: ClientSession) => {
     // $set (not replace) so createdAt — the same-day ordering key — is preserved.
     await Transaction.updateOne({ _id: existing._id, userId: uid }, { $set: next }, { session });
     if (affectsFunding(existing) || affectsFunding(next)) {
@@ -263,16 +288,19 @@ export async function updateTransaction(userId: string, id: string, raw: TxnInpu
     for (const goalId of new Set([existing.goalId?.toString(), next.goalId?.toString()])) {
       if (goalId) await assertGoalNeverNegative(userId, oid(goalId), session);
     }
-  });
+  };
+  if (opts.session) await run(opts.session);
+  else await withLedger(userId, run);
 }
 
-export async function deleteTransaction(userId: string, id: string): Promise<void> {
+export async function deleteTransaction(userId: string, id: string, opts: { session?: ClientSession; linked?: boolean } = {}): Promise<void> {
   await connectDB();
   const uid = oid(userId);
-  const existing = await Transaction.findOne({ _id: oid(id), userId: uid }).lean();
+  const existing = await Transaction.findOne({ _id: oid(id), userId: uid }, null, { session: opts.session }).lean();
   if (!existing) throw new NotFoundError("Transaction");
+  if (!opts.linked) assertNotLinked(existing);
 
-  await withLedger(userId, async (session) => {
+  const run = async (session: ClientSession) => {
     await Transaction.deleteOne({ _id: existing._id, userId: uid }, { session });
     // Expenses that asked to be funded by this income fall back to plain FIFO.
     await Transaction.updateMany({ userId: uid, fundingSourceId: existing._id }, { $set: { fundingSourceId: null } }, { session });
@@ -280,7 +308,20 @@ export async function deleteTransaction(userId: string, id: string): Promise<voi
       await recomputeFunding(userId, existing.date, session, { reason: `Deleted “${existing.title}”` });
     }
     if (existing.goalId) await assertGoalNeverNegative(userId, existing.goalId, session);
-  });
+  };
+  if (opts.session) await run(opts.session);
+  else await withLedger(userId, run);
+}
+
+/**
+ * Loan and investment entries (and interest/profit recorded on them) change only through
+ * Lending & Borrowing / Investments, which keep the loan or investment and its money consistent.
+ */
+function assertNotLinked(t: { type: TxnType; loanId?: unknown; investmentId?: unknown }) {
+  if (LINKED_TYPES.includes(t.type) || t.loanId) {
+    throw new AppError("This entry belongs to a loan — change it from Lending & Borrowing.");
+  }
+  if (t.investmentId) throw new AppError("This entry belongs to an investment — change it from Investments.");
 }
 
 /** Pending → paid. The payment date defaults to the original (due) date. */
@@ -368,8 +409,8 @@ export const SPENDABLE_DELTA_EXPR = {
     {
       $switch: {
         branches: [
-          { case: { $in: ["$type", ["income", "savings_withdrawal"]] }, then: "$amount" },
-          { case: { $in: ["$type", ["expense", "savings_deposit"]] }, then: { $multiply: ["$amount", -1] } },
+          { case: { $in: ["$type", IN_TYPES] }, then: "$amount" },
+          { case: { $in: ["$type", OUT_TYPES] }, then: { $multiply: ["$amount", -1] } },
         ],
         default: 0,
       },
@@ -399,8 +440,8 @@ export async function listTransactions(userId: string, filters: TxnFilters, look
     match.date = { ...(filters.from ? { $gte: filters.from } : {}), ...(filters.to ? { $lte: filters.to } : {}) };
   }
   if (filters.type) match.type = filters.type;
-  else if (filters.flow === "out") match.type = { $in: ["expense", "savings_deposit"] };
-  else if (filters.flow === "in") match.type = { $in: ["income", "savings_withdrawal"] };
+  else if (filters.flow === "out") match.type = { $in: OUT_TYPES };
+  else if (filters.flow === "in") match.type = { $in: IN_TYPES };
   if (filters.status) match.status = filters.status;
   if (filters.personId) match.personId = oid(filters.personId);
   if (filters.billOnly) match.bill = { $ne: null };
@@ -441,8 +482,8 @@ export async function listTransactions(userId: string, filters: TxnFilters, look
           {
             $group: {
               _id: null,
-              moneyIn: { $sum: { $cond: [{ $and: [{ $eq: ["$status", "paid"] }, { $in: ["$type", ["income", "savings_withdrawal"]] }] }, "$amount", 0] } },
-              moneyOut: { $sum: { $cond: [{ $and: [{ $eq: ["$status", "paid"] }, { $in: ["$type", ["expense", "savings_deposit"]] }] }, "$amount", 0] } },
+              moneyIn: { $sum: { $cond: [{ $and: [{ $eq: ["$status", "paid"] }, { $in: ["$type", IN_TYPES] }] }, "$amount", 0] } },
+              moneyOut: { $sum: { $cond: [{ $and: [{ $eq: ["$status", "paid"] }, { $in: ["$type", OUT_TYPES] }] }, "$amount", 0] } },
               pending: { $sum: { $cond: [{ $eq: ["$status", "pending"] }, "$amount", 0] } },
               pendingCount: { $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] } },
             },

@@ -33,6 +33,10 @@ import {
   type Priority,
   GOAL_STATUSES,
   type GoalStatus,
+  LOAN_DIRECTIONS,
+  type LoanDirection,
+  INVESTMENT_KINDS,
+  type InvestmentKind,
 } from "../constants";
 export * from "../constants";
 
@@ -97,6 +101,8 @@ export interface AccountDoc {
   userId: Types.ObjectId;
   name: string;
   kind: AccountKind;
+  /** Why money is kept here (shown in the Remaining balance card). */
+  note?: string;
   isDefault: boolean;
   archived: boolean;
   createdAt: Date;
@@ -108,6 +114,7 @@ const AccountSchema = new Schema<AccountDoc>(
     userId: { type: Schema.Types.ObjectId, required: true, index: true },
     name: { type: String, required: true, trim: true, maxlength: 60 },
     kind: { type: String, enum: ACCOUNT_KINDS, default: "cash" },
+    note: { type: String, trim: true, maxlength: 200 },
     isDefault: { type: Boolean, default: false },
     archived: { type: Boolean, default: false },
   },
@@ -194,6 +201,65 @@ const PersonAllocationSchema = new Schema<PersonAllocationDoc>(
 );
 PersonAllocationSchema.index({ userId: 1, personId: 1, month: 1 }, { unique: true });
 
+/* ------------------------------------------------------------------ Lending & borrowing */
+
+/**
+ * One loan with one person. The money itself lives in transactions linked by loanId:
+ * the principal (lent → loan_out, borrowed → loan_in) and repayments (the opposite type),
+ * so account balances and the ledger always agree with the loan.
+ */
+export interface LoanDoc {
+  _id: Types.ObjectId;
+  userId: Types.ObjectId;
+  direction: LoanDirection;
+  person: string;
+  date: string;
+  dueDate?: string | null;
+  note?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const LoanSchema = new Schema<LoanDoc>(
+  {
+    userId: { type: Schema.Types.ObjectId, required: true, index: true },
+    direction: { type: String, enum: LOAN_DIRECTIONS, required: true },
+    person: { type: String, required: true, trim: true, maxlength: 80 },
+    date: { ...isoDate, required: true },
+    dueDate: { ...isoDate, default: null },
+    note: { type: String, trim: true, maxlength: 500 },
+  },
+  { timestamps: true },
+);
+
+/* ------------------------------------------------------------------ Investments */
+
+/** An investment. Money in/out lives in transactions linked by investmentId (invest_out, invest_in, profit as income). */
+export interface InvestmentDoc {
+  _id: Types.ObjectId;
+  userId: Types.ObjectId;
+  name: string;
+  kind: InvestmentKind;
+  date: string;
+  /** What it is worth now, when known (poisha). */
+  currentValue?: number | null;
+  note?: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+const InvestmentSchema = new Schema<InvestmentDoc>(
+  {
+    userId: { type: Schema.Types.ObjectId, required: true, index: true },
+    name: { type: String, required: true, trim: true, maxlength: 80 },
+    kind: { type: String, enum: INVESTMENT_KINDS, default: "business" },
+    date: { ...isoDate, required: true },
+    currentValue: { type: Number, default: null, validate: { validator: (v: number | null) => v === null || (Number.isSafeInteger(v) && v >= 0), message: "Invalid value" } },
+    note: { type: String, trim: true, maxlength: 500 },
+  },
+  { timestamps: true },
+);
+
 /* ------------------------------------------------------------------ Savings goals */
 
 export interface SavingsGoalDoc {
@@ -265,6 +331,10 @@ export interface TransactionDoc {
   toAccountId?: Types.ObjectId | null;
   personId?: Types.ObjectId | null;
   goalId?: Types.ObjectId | null;
+  /** Lending & Borrowing: principal, repayments and interest of one loan. */
+  loanId?: Types.ObjectId | null;
+  /** Investments: money put in, capital returned and profit of one investment. */
+  investmentId?: Types.ObjectId | null;
   notes?: string;
   income?: { kind: IncomeKind; label?: string } | null;
   items: BreakdownItem[];
@@ -302,6 +372,8 @@ const TransactionSchema = new Schema<TransactionDoc>(
     toAccountId: { type: Schema.Types.ObjectId, default: null },
     personId: { type: Schema.Types.ObjectId, default: null },
     goalId: { type: Schema.Types.ObjectId, default: null },
+    loanId: { type: Schema.Types.ObjectId, default: null },
+    investmentId: { type: Schema.Types.ObjectId, default: null },
     notes: { type: String, maxlength: 2000 },
     income: {
       type: new Schema({ kind: { type: String, enum: INCOME_KINDS, required: true }, label: String }, { _id: false }),
@@ -335,6 +407,8 @@ TransactionSchema.index({ userId: 1, attributionMonth: 1 });
 TransactionSchema.index({ userId: 1, categoryId: 1 });
 TransactionSchema.index({ userId: 1, personId: 1 }, { partialFilterExpression: { personId: { $type: "objectId" } } });
 TransactionSchema.index({ userId: 1, goalId: 1 }, { partialFilterExpression: { goalId: { $type: "objectId" } } });
+TransactionSchema.index({ userId: 1, loanId: 1 }, { partialFilterExpression: { loanId: { $type: "objectId" } } });
+TransactionSchema.index({ userId: 1, investmentId: 1 }, { partialFilterExpression: { investmentId: { $type: "objectId" } } });
 TransactionSchema.index({ userId: 1, "bill.billType": 1, attributionMonth: 1 });
 
 /* ------------------------------------------------------------------ Funding ledger */
@@ -514,6 +588,8 @@ export const RecurringBill = getModel<RecurringBillDoc>("RecurringBill", Recurri
 export const AlertState = getModel<AlertStateDoc>("AlertState", AlertStateSchema);
 export const LoginAttempt = getModel<LoginAttemptDoc>("LoginAttempt", LoginAttemptSchema);
 export const SyncOp = getModel<SyncOpDoc>("SyncOp", SyncOpSchema);
+export const Loan = getModel<LoanDoc>("Loan", LoanSchema);
+export const Investment = getModel<InvestmentDoc>("Investment", InvestmentSchema);
 
 export function oid(id: string | Types.ObjectId): Types.ObjectId {
   return typeof id === "string" ? new Types.ObjectId(id) : id;

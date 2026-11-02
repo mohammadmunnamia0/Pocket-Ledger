@@ -1,10 +1,11 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { Plus } from "lucide-react";
+import { Plus, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState, Meter, PageHeader, StatCard, TableSkeleton } from "@/components/common";
 import { Money } from "@/components/money";
+import { ButtonLink } from "@/components/button-link";
 import { GoalDialog, SavingsMoveDialog } from "@/components/savings-forms";
 import { requireUser } from "@/lib/auth/session";
 import { listGoals } from "@/lib/services/savings";
@@ -23,6 +24,11 @@ export default function SavingsPage({ searchParams }: PageProps<"/savings">) {
         title="Savings Goals"
         help="savings"
         description="Set money aside for emergencies and plans. Savings are separate from spending and never moved automatically."
+        actions={
+          <ButtonLink href="/investments" variant="outline">
+            <TrendingUp /> Investments
+          </ButtonLink>
+        }
       />
       <Suspense fallback={<TableSkeleton rows={6} />}>
         <Savings searchParams={searchParams} />

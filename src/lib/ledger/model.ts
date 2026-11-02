@@ -6,7 +6,7 @@
  * totals, balances, savings, borrowed money — is computed by exactly the same code in both
  * places. No database imports here: this module must stay safe to ship to the browser.
  */
-import type { CategoryNature, IncomeKind, TxnStatus, TxnType } from "../constants";
+import { IN_TYPES, OUT_TYPES, type CategoryNature, type IncomeKind, type TxnStatus, type TxnType } from "../constants";
 import { addDays } from "../dates";
 import { allocateFifo, compareLedgerOrder, type FundingConsumer, type FundingSource, type Shortfall } from "./fifo";
 
@@ -50,10 +50,23 @@ export interface PersonAllocationInfo {
 
 /* ------------------------------------------------------------------ Ledger roles */
 
-/** Money arriving into the spendable pool. */
-export const SOURCE_TYPES: TxnType[] = ["income", "savings_withdrawal"];
-/** Money leaving the spendable pool. */
-export const CONSUMER_TYPES: TxnType[] = ["expense", "savings_deposit"];
+/**
+ * Money arriving into the spendable pool. Besides income this includes money that is not
+ * income (a savings withdrawal, money borrowed or repaid to you, investment capital returned),
+ * so it can pay for later expenses (FIFO) without ever being counted as income.
+ */
+export const SOURCE_TYPES: TxnType[] = IN_TYPES;
+/** Money leaving the spendable pool: expenses, and moves that are not expenses (saving, lending, repaying, investing). */
+export const CONSUMER_TYPES: TxnType[] = OUT_TYPES;
+
+/** What a funding source is, for labels: an income kind, or a non-income inflow. */
+export type SourceKind = IncomeKind | "withdrawal" | "loan" | "capital";
+export function sourceKindOf(type: TxnType, incomeKind: IncomeKind | null | undefined): SourceKind {
+  if (type === "income") return incomeKind ?? "other";
+  if (type === "loan_in") return "loan";
+  if (type === "invest_in") return "capital";
+  return "withdrawal";
+}
 
 export function isSource(t: { type: TxnType; status: TxnStatus }): boolean {
   return t.status === "paid" && SOURCE_TYPES.includes(t.type);
@@ -68,8 +81,8 @@ export function affectsFunding(t: { type: TxnType; status: TxnStatus }): boolean
 /** Signed effect on the spendable balance (mirrors SPENDABLE_DELTA_EXPR on the server). */
 export function spendableDelta(t: { type: TxnType; status: TxnStatus; amount: number }): number {
   if (t.status !== "paid") return 0;
-  if (t.type === "income" || t.type === "savings_withdrawal") return t.amount;
-  if (t.type === "expense" || t.type === "savings_deposit") return -t.amount;
+  if (IN_TYPES.includes(t.type)) return t.amount;
+  if (OUT_TYPES.includes(t.type)) return -t.amount;
   return 0;
 }
 
@@ -154,6 +167,10 @@ export interface PeriodTotals {
   savingsWithdrawals: number;
   /** Investments + net savings moves. */
   savingsAndTransfers: number;
+  /** Money borrowed or repaid to you + investment capital returned (not income). */
+  otherInflows: number;
+  /** Money lent, or repaid to a lender (not an expense). */
+  loansOut: number;
   totalOutflows: number;
   closingBalance: number;
   pendingTotal: number;
@@ -168,7 +185,7 @@ export function summarizePeriod(
 ): PeriodTotals {
   const nature = natureOf(lookups);
   let salary = 0, additionalIncome = 0, broughtIn = 0, expenses = 0, investments = 0;
-  let savingsDeposits = 0, savingsWithdrawals = 0, pendingTotal = 0;
+  let savingsDeposits = 0, savingsWithdrawals = 0, pendingTotal = 0, otherInflows = 0, loansOut = 0;
   const daily = new Map<string, number>();
   for (const t of txns) {
     if (t.status === "pending") {
@@ -192,12 +209,22 @@ export function summarizePeriod(
       case "savings_withdrawal":
         savingsWithdrawals += t.amount;
         break;
+      case "invest_out":
+        investments += t.amount;
+        break;
+      case "loan_in":
+      case "invest_in":
+        otherInflows += t.amount;
+        break;
+      case "loan_out":
+        loansOut += t.amount;
+        break;
     }
   }
   const totalIncome = salary + additionalIncome;
-  const totalAvailable = opening + totalIncome + broughtIn;
+  const totalAvailable = opening + totalIncome + broughtIn + otherInflows;
   const savingsAndTransfers = investments + savingsDeposits - savingsWithdrawals;
-  const totalOutflows = expenses + savingsAndTransfers;
+  const totalOutflows = expenses + savingsAndTransfers + loansOut;
   return {
     openingBalance: opening,
     salary,
@@ -210,6 +237,8 @@ export function summarizePeriod(
     savingsDeposits,
     savingsWithdrawals,
     savingsAndTransfers,
+    otherInflows,
+    loansOut,
     totalOutflows,
     closingBalance: totalAvailable - totalOutflows,
     pendingTotal,
@@ -252,12 +281,15 @@ export function runningBalances(txns: LedgerTxn[]): Map<string, number> {
   return out;
 }
 
-/** All-time paid spending in "Investment / saving" categories. */
+/** Money invested and not yet returned: spending in "Investment / saving" categories + investments - capital returned. */
 export function investedTotal(txns: LedgerTxn[], lookups: { categories: CategoryInfo[] }): number {
   const nature = natureOf(lookups);
   let total = 0;
   for (const t of txns) {
-    if (t.type !== "expense" || t.status !== "paid") continue;
+    if (t.status !== "paid") continue;
+    if (t.type === "invest_out") total += t.amount;
+    if (t.type === "invest_in") total -= t.amount;
+    if (t.type !== "expense") continue;
     for (const line of expenseLines(t)) if (nature(line.categoryId) === "saving") total += line.amount;
   }
   return total;
@@ -268,7 +300,7 @@ export function investedTotal(txns: LedgerTxn[], lookups: { categories: Category
 export interface SourceItem {
   id: string;
   type: TxnType;
-  kind: IncomeKind | "withdrawal";
+  kind: SourceKind;
   label: string;
   date: string;
   seq: number;
@@ -292,7 +324,7 @@ export function sourcesOf(txns: LedgerTxn[]): SourceItem[] {
     .map((t) => ({
       id: t.id,
       type: t.type,
-      kind: (t.type === "income" ? (t.incomeKind ?? "other") : "withdrawal") as IncomeKind | "withdrawal",
+      kind: sourceKindOf(t.type, t.incomeKind),
       label: t.incomeLabel || t.title,
       date: t.date,
       seq: seqOf(t),
@@ -324,7 +356,7 @@ export type SourceStatus = "active" | "partial" | "exhausted";
 export interface FundingSourceRecord {
   id: string;
   type: TxnType;
-  kind: IncomeKind | "withdrawal";
+  kind: SourceKind;
   label: string;
   date: string;
   amount: number;
@@ -383,6 +415,8 @@ export interface SalaryCycle {
   /** Which earlier salaries (or other income) the carried-in money is left over from. */
   carriedFrom: { sourceId: string; label: string; date: string; amount: number }[];
   otherIncome: number;
+  /** Borrowed money, loan repayments received and investment capital returned during the cycle (not income). */
+  otherInflows: number;
   totalAvailable: number;
   totalSpent: number;
   fundedByThisSalary: number;
@@ -428,7 +462,10 @@ export function buildSalaryCycles(sources: SourceItem[], allocations: AllocItem[
       }))
       .filter((x) => x.amount > 0);
 
-    const otherIncome = sources.filter((s) => s.id !== sal.id && !earlierIds.has(s.id) && inCycle(s.date)).reduce((acc, s) => acc + s.amount, 0);
+    const laterInCycle = sources.filter((s) => s.id !== sal.id && !earlierIds.has(s.id) && inCycle(s.date));
+    const notIncome = (s: SourceItem) => s.kind === "loan" || s.kind === "capital";
+    const otherIncome = laterInCycle.filter((s) => !notIncome(s)).reduce((acc, s) => acc + s.amount, 0);
+    const otherInflows = laterInCycle.filter(notIncome).reduce((acc, s) => acc + s.amount, 0);
 
     let fundedByThisSalary = 0, fundedByPrevious = 0, fundedByOther = 0, thisUsedThroughEnd = 0;
     for (const a of allocations) {
@@ -451,7 +488,8 @@ export function buildSalaryCycles(sources: SourceItem[], allocations: AllocItem[
       carriedIn,
       carriedFrom,
       otherIncome,
-      totalAvailable: carriedIn + sal.amount + otherIncome,
+      otherInflows,
+      totalAvailable: carriedIn + sal.amount + otherIncome + otherInflows,
       totalSpent,
       fundedByThisSalary,
       fundedByPrevious,
@@ -460,7 +498,7 @@ export function buildSalaryCycles(sources: SourceItem[], allocations: AllocItem[
       previousRemaining: carriedIn - fundedByPrevious,
       unfunded: totalSpent - (fundedByThisSalary + fundedByPrevious + fundedByOther),
       expenseCount: spent.length,
-      remainingAtEnd: carriedIn + sal.amount + otherIncome - totalSpent,
+      remainingAtEnd: carriedIn + sal.amount + otherIncome + otherInflows - totalSpent,
     };
   });
 }
@@ -548,10 +586,14 @@ export function computeDashboardFigures(input: DashboardInput) {
       carriedFrom: cycle.carriedFrom,
       salary: pr.salary,
       otherIncome: pr.additionalIncome + pr.broughtIn,
-      totalAvailable: pr.openingBalance + pr.salary + pr.additionalIncome + pr.broughtIn,
+      /** Borrowed money, loan repayments received, investment capital returned (not income). */
+      otherInflows: pr.otherInflows,
+      totalAvailable: pr.totalAvailable,
       spends: pr.totalOutflows,
       savedOrInvested: pr.savingsAndTransfers,
-      paymentCount: inPeriod.filter((t) => t.status === "paid" && (t.type === "expense" || t.type === "savings_deposit")).length,
+      /** Money lent, or repaid to a lender (not spending). */
+      lentOrRepaid: pr.loansOut,
+      paymentCount: inPeriod.filter((t) => t.status === "paid" && OUT_TYPES.includes(t.type)).length,
       remaining: pr.closingBalance,
     };
   }

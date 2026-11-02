@@ -21,6 +21,8 @@ export interface DerivedTxn {
   toAccountId: string | null;
   personId: string | null;
   goalId: string | null;
+  loanId: string | null;
+  investmentId: string | null;
   notes: string | undefined;
   income: { kind: IncomeKind; label: string | undefined } | null;
   items: { name: string; amount: number; categoryId: string | null; notes: string | undefined }[];
@@ -58,6 +60,10 @@ export function deriveTxn(input: TxnInput, ctx: { othersCategoryId: string | nul
     toAccountId: input.type === "transfer" ? (input.toAccountId ?? null) : null,
     personId: isExpense ? (input.personId ?? null) : null,
     goalId: input.type.startsWith("savings_") ? (input.goalId ?? null) : null,
+    // Loan entries, and interest received on a loan (income), point at their loan.
+    loanId: input.type.startsWith("loan_") || input.type === "income" ? (input.loanId ?? null) : null,
+    // Investment entries, and profit received from an investment (income), point at it.
+    investmentId: input.type.startsWith("invest_") || input.type === "income" ? (input.investmentId ?? null) : null,
     notes: input.notes,
     income:
       input.type === "income"

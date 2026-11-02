@@ -1,4 +1,4 @@
-import type { AccountKind, BillType, GoalKind, IncomeKind, PaymentMethod, Priority, TxnType } from "./constants";
+import type { AccountKind, BillType, GoalKind, HoldingKind, IncomeKind, InvestmentKind, PaymentMethod, Priority, TxnType } from "./constants";
 
 export const PAYMENT_METHOD_LABELS: Record<PaymentMethod, string> = {
   cash: "Cash",
@@ -14,6 +14,26 @@ export const TXN_TYPE_LABELS: Record<TxnType, string> = {
   transfer: "Transfer",
   savings_deposit: "Savings deposit",
   savings_withdrawal: "Savings withdrawal",
+  loan_out: "Loan — money out",
+  loan_in: "Loan — money in",
+  invest_out: "Investment",
+  invest_in: "Investment capital returned",
+};
+
+export const INVESTMENT_KIND_LABELS: Record<InvestmentKind, string> = {
+  business: "Business",
+  stocks: "Shares / stocks",
+  deposit: "Fixed deposit / DPS",
+  property: "Property / land",
+  gold: "Gold",
+  crypto: "Crypto",
+  other: "Other",
+};
+
+export const HOLDING_LABELS: Record<HoldingKind, string> = {
+  bank: "Bank",
+  cash: "Cash",
+  mobile: "Mobile Banking",
 };
 
 export const INCOME_KIND_LABELS: Record<IncomeKind, string> = {
@@ -50,3 +70,10 @@ export const GOAL_KIND_LABELS: Record<GoalKind, string> = {
 };
 
 export const PRIORITY_LABELS: Record<Priority, string> = { high: "High", medium: "Medium", low: "Low" };
+
+/** Money that can fund spending but is not income. */
+export const NON_INCOME_SOURCE_LABELS = {
+  withdrawal: "Savings withdrawal",
+  loan: "Loan money in (not income)",
+  capital: "Investment capital returned",
+} as const;

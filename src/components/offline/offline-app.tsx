@@ -25,12 +25,14 @@ import { addMonths, formatDate, formatMonthLong, monthEnd, monthOf, monthStart, 
 import { formatTaka } from "@/lib/money";
 import { PAYMENT_METHOD_LABELS, TXN_TYPE_LABELS } from "@/lib/labels";
 import { cn } from "@/lib/utils";
+import { IN_TYPES, LINKED_TYPES, OUT_TYPES } from "@/lib/constants";
 import type { Snapshot } from "@/lib/sync/types";
 
 /* ------------------------------------------------------------------ routing inside the offline app */
 
 const TABS = [
-  { path: "/", label: "Home" },
+  { path: "/", label: "Accounts" },
+  { path: "/personal", label: "Home" },
   { path: "/transactions", label: "Transactions" },
   { path: "/expenses/new", label: "Add" },
   { path: "/income/history", label: "Salary history" },
@@ -115,7 +117,8 @@ export function OfflineApp() {
   const ctx: ViewCtx = { snapshot, txns, today, go };
   const [, a, b] = path.split("/");
   let view: ReactNode;
-  if (path === "/" || path === "") view = <HomeView {...ctx} />;
+  if (path === "/" || path === "") view = <AccountsView {...ctx} />;
+  else if (a === "personal") view = <HomeView {...ctx} />;
   else if (a === "transactions" && b && path.endsWith("/edit")) view = <EditView {...ctx} id={decodeURIComponent(b)} />;
   else if (a === "transactions" && b) view = <DetailView {...ctx} id={decodeURIComponent(b)} />;
   else if (a === "transactions") view = <TransactionsView {...ctx} />;
@@ -227,7 +230,7 @@ function SyncBadge({ t }: { t: LocalTxn }) {
   );
 }
 
-const sign = (t: LocalTxn) => (t.type === "income" || t.type === "savings_withdrawal" ? 1 : t.type === "transfer" ? 0 : -1);
+const sign = (t: LocalTxn) => (IN_TYPES.includes(t.type) ? 1 : OUT_TYPES.includes(t.type) ? -1 : 0);
 
 function TxnRow({ t, go, balance }: { t: LocalTxn; go: (to: string) => void; balance?: number }) {
   const s = sign(t);
@@ -271,7 +274,54 @@ function Card({ label, value, hint, highlight, onClick }: { label: string; value
   );
 }
 
+/** "+ Latest salary", blurred until the first tap (as online); the next tap opens salary history. */
+function SalaryCard({ value, hint, onOpen }: { value: number; hint: string; onOpen: () => void }) {
+  const [shown, setShown] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => (shown ? onOpen() : setShown(true))}
+      aria-label={shown ? undefined : "+ Latest salary: hidden. Tap to show the amount."}
+      className="flex flex-col rounded-xl border bg-card p-4 text-left hover:border-foreground/20"
+    >
+      <span className="text-xs font-medium text-muted-foreground">+ Latest salary</span>
+      <span className="mt-1 text-xl font-semibold tracking-tight tabular">
+        {shown ? <span className="text-primary">{formatTaka(value)}</span> : <span className="pointer-events-none select-none blur-[6px]" aria-hidden>{formatTaka(value)}</span>}
+      </span>
+      <span className="mt-1 text-xs text-muted-foreground">{shown ? hint : "Hidden — tap to show"}</span>
+    </button>
+  );
+}
+
 /* ------------------------------------------------------------------ views */
+
+/** The four account cards (as online). Business accounting isn't available yet. */
+function AccountsView({ snapshot, txns, today, go }: ViewCtx) {
+  const f = localFigures(snapshot, txns, today);
+  return (
+    <div className="space-y-3">
+      <h1 className="text-sm font-semibold">Your accounts</h1>
+      <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <li>
+          <button type="button" onClick={() => go("/personal")} className="flex w-full flex-col rounded-xl border border-primary/40 bg-primary/5 p-5 text-left">
+            <span className="font-semibold">Personal Finance</span>
+            <span className="text-xs text-muted-foreground">Salary, expenses, savings, loans &amp; investments</span>
+            <span className="mt-3 text-xs font-medium text-muted-foreground">Remaining balance</span>
+            <span className="text-3xl font-semibold tracking-tight">
+              <Money value={f.metrics.availableNow} tone="auto" />
+            </span>
+          </button>
+        </li>
+        {(["Alwin BD", "ReturnHex", "Naire"] as const).map((name) => (
+          <li key={name} className="rounded-xl border border-dashed bg-card p-5">
+            <span className="font-semibold">{name}</span>
+            <span className="mt-2 block text-sm text-muted-foreground">Not set up yet — business accounting is added in the next update.</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 function HomeView({ snapshot, txns, today, go }: ViewCtx) {
   const f = localFigures(snapshot, txns, today);
@@ -287,7 +337,7 @@ function HomeView({ snapshot, txns, today, go }: ViewCtx) {
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             <Card highlight label="= Remaining balance" value={p.remaining} hint={`${formatTaka(p.totalAvailable)} available − ${formatTaka(p.spends)} spent`} onClick={() => go("/transactions")} />
             <Card label="Previous salary carryforward" value={p.carriedIn} hint={p.carriedFrom.length ? `Left from ${p.carriedFrom.map((c) => c.label).join(" + ")}` : "Nothing left from earlier salaries"} onClick={() => go("/income/history")} />
-            <Card label="+ Latest salary" value={p.salary} hint={`${p.label}, received ${formatDate(p.receivedOn)}`} />
+            <SalaryCard value={p.salary} hint={`${p.label}, received ${formatDate(p.receivedOn)}`} onOpen={() => go("/income/history")} />
             <Card label="= Total available" value={p.totalAvailable} />
             <Card label="− Spends this period" value={p.spends} hint={`${p.paymentCount} payments since ${formatDate(p.receivedOn)}`} />
           </div>
@@ -323,8 +373,8 @@ function TransactionsView({ txns, go }: ViewCtx) {
   const filtered = sortLedger(txns)
     .reverse()
     .filter((t) => {
-      if (kind === "out" && !(t.type === "expense" || t.type === "savings_deposit")) return false;
-      if (kind === "in" && !(t.type === "income" || t.type === "savings_withdrawal")) return false;
+      if (kind === "out" && !OUT_TYPES.includes(t.type)) return false;
+      if (kind === "in" && !IN_TYPES.includes(t.type)) return false;
       if (kind === "pending" && t.status !== "pending") return false;
       if (kind === "unsynced" && !t.syncState) return false;
       if (!q.trim()) return true;
@@ -388,7 +438,8 @@ function DetailView({ txns, go, id, today }: ViewCtx & { id: string }) {
     );
   }
   const title = t.incomeLabel || t.title;
-  const editable = !t.type.startsWith("savings");
+  const linked = LINKED_TYPES.includes(t.type);
+  const editable = !t.type.startsWith("savings") && !linked;
   const rows: [string, ReactNode][] = [
     ["Type", TXN_TYPE_LABELS[t.type]],
     [t.status === "pending" ? "Due date" : "Date", formatDate(t.date)],
@@ -416,14 +467,18 @@ function DetailView({ txns, go, id, today }: ViewCtx & { id: string }) {
             <Pencil /> Edit
           </Button>
         )}
-        <ConfirmButton
-          title={`Delete “${title}”?`}
-          description="Saved on this device now and removed from the server when you're back online. Balances recalculate right away."
-          action={() => offlineDelete({ id: t.id, updatedAt: t.updatedAt, title })}
-          onDone={() => go("/transactions")}
-        >
-          <Trash2 /> Delete
-        </ConfirmButton>
+        {linked ? (
+          <p className="text-xs text-muted-foreground">Part of a loan or investment — change it from Lending &amp; Borrowing or Investments when you&apos;re online.</p>
+        ) : (
+          <ConfirmButton
+            title={`Delete “${title}”?`}
+            description="Saved on this device now and removed from the server when you're back online. Balances recalculate right away."
+            action={() => offlineDelete({ id: t.id, updatedAt: t.updatedAt, title })}
+            onDone={() => go("/transactions")}
+          >
+            <Trash2 /> Delete
+          </ConfirmButton>
+        )}
       </div>
       {t.status === "pending" && editable && (
         <Section title="Mark as paid">
@@ -598,9 +653,11 @@ function ReportView({ snapshot, txns, today }: ViewCtx) {
     ["Opening balance (carried forward)", r.openingBalance],
     ["+ Salary", r.salary],
     ["+ Additional income", r.additionalIncome + r.broughtIn],
+    ...(r.otherInflows ? ([["+ Borrowed, repaid to you, capital back (not income)", r.otherInflows]] as [string, number][]) : []),
     ["= Total money this month (before spending)", r.totalAvailable, "font-medium border-t"],
     ["− Expenses", r.expenses],
     ["− Savings / investments (net)", r.savingsAndTransfers],
+    ...(r.loansOut ? ([["− Lent or repaid to lenders (not expenses)", r.loansOut]] as [string, number][]) : []),
     ["= Closing balance (money left)", r.closingBalance, "font-semibold border-t"],
   ];
   return (

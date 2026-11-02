@@ -7,6 +7,7 @@ import { csvResponse, toCsv } from "@/lib/csv";
 import { todayISO } from "@/lib/dates";
 import { PAYMENT_METHOD_LABELS, TXN_TYPE_LABELS } from "@/lib/labels";
 import { toInputValue } from "@/lib/money";
+import { IN_TYPES, OUT_TYPES } from "@/lib/constants";
 
 /** Transaction history as CSV, honouring the same filters as the history page. */
 export async function GET(request: NextRequest) {
@@ -19,7 +20,7 @@ export async function GET(request: NextRequest) {
   for (let page = 1; ; page++) {
     const list = await listTransactions(user.id, { ...filters, page, pageSize: 200 }, lookups);
     for (const t of list.rows) {
-      const sign = t.type === "income" || t.type === "savings_withdrawal" ? 1 : t.type === "transfer" ? 0 : -1;
+      const sign = IN_TYPES.includes(t.type) ? 1 : OUT_TYPES.includes(t.type) ? -1 : 0;
       rows.push([
         t.date,
         t.incomeLabel || t.title,

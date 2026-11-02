@@ -10,7 +10,7 @@ import { getFundingSources, type FundingSourceRecord } from "@/lib/services/sala
 import { getFormContext } from "@/lib/services/forms";
 import { formatDate } from "@/lib/dates";
 import { formatTaka, percent } from "@/lib/money";
-import { INCOME_KIND_LABELS } from "@/lib/labels";
+import { INCOME_KIND_LABELS, NON_INCOME_SOURCE_LABELS } from "@/lib/labels";
 import { cn } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Income & Salary" };
@@ -76,7 +76,7 @@ async function IncomeView() {
 }
 
 function SourceRow({ r }: { r: FundingSourceRecord }) {
-  const kind = r.kind === "withdrawal" ? "Savings withdrawal" : INCOME_KIND_LABELS[r.kind];
+  const kind = r.kind in NON_INCOME_SOURCE_LABELS ? NON_INCOME_SOURCE_LABELS[r.kind as keyof typeof NON_INCOME_SOURCE_LABELS] : INCOME_KIND_LABELS[r.kind as keyof typeof INCOME_KIND_LABELS];
   return (
     <li className="py-3">
       <Link href={`/income/${r.id}`} className="-mx-2 block rounded-lg px-2 py-1 hover:bg-muted/50">

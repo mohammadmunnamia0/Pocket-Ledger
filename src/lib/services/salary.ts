@@ -1,11 +1,12 @@
 import { connectDB } from "../db/connect";
-import { FundingAllocation, Transaction, oid, type IncomeKind, type TxnType } from "../db/models";
+import { FundingAllocation, Transaction, oid, type TxnType } from "../db/models";
 import { todayISO } from "../dates";
 import { compareLedgerOrder } from "../ledger/fifo";
 import {
   buildFundingRecords,
   buildSalaryCycles,
   currentCycle as modelCurrentCycle,
+  sourceKindOf,
   type AllocItem,
   type FundingSourceRecord,
   type SalaryCycle,
@@ -36,7 +37,7 @@ async function loadLedger(userId: string): Promise<LoadedLedger> {
     .map((s) => ({
       id: s._id.toString(),
       type: s.type,
-      kind: (s.type === "income" ? (s.income?.kind ?? "other") : "withdrawal") as IncomeKind | "withdrawal",
+      kind: sourceKindOf(s.type, s.income?.kind),
       label: s.income?.label || s.title,
       date: s.date,
       seq: s.createdAt.getTime(),

@@ -6,6 +6,12 @@ A personal salary, expense and savings ledger in Bangladeshi Taka (৳). Each sa
 
 ## Features
 
+- **All accounts** is the first screen. It shows four cards: Personal Finance, Alwin BD, ReturnHex and Naire. Business accounting arrives in a later phase; until then the business cards say "not set up yet". The personal dashboard is at `/personal`.
+- **Bank / Cash / Mobile Banking**: three boxes under the Remaining balance card show the real balance of each kind of account. Each figure is calculated from transactions. *Change split* records transfers between them, which never changes the total. A split that doesn't add up is refused with an explanation, and so is a total that doesn't match the remaining balance. *Move money* records a single transfer.
+- **Lending & Borrowing** (`/loans`): loans with the person, the amount, the date, an optional expected date, the account and a note, plus partial or full repayments. Status is Outstanding / Partially repaid / Fully repaid, with Overdue shown when the expected date has passed. Principal and repayments are linked transactions (`loan_out` / `loan_in`), so they move account balances and the FIFO ledger. They are never counted as income or expense. Interest is recorded separately as income (on money you lent) or as an expense (on money you borrowed).
+- **Investments** (`/investments`): the name, type, amount, date, account, an optional current value and a note. Invested money (`invest_out`) is an asset, not an expense. Returned capital (`invest_in`) is not income; profit is recorded as income. Profit or loss is shown only when it can be known.
+- **Salary privacy**: the "+ Latest salary" card is blurred until tapped. The amount then shows in blue, and a second tap opens the salary details.
+- Loan and investment entries change only through their own pages. The server refuses changes to them from generic transaction screens and from offline sync.
 - **Dashboard** shows total available, salary, income, expenses, remaining balance, savings and pending payments. It also has a salary carry-forward widget, daily and category charts, income vs. expenses, recent transactions, upcoming bills and smart alerts.
 - **Quick Add**: a five-field expense dialog available on every page. It remembers your last category and payment method.
 - **Expenses** can be a simple expense or an itemized breakdown; the total is always computed from the items. Each expense can be paid or pending, linked to a person or a "belongs to" month, and given a manual funding-salary override.

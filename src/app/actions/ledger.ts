@@ -1,7 +1,14 @@
 "use server";
 
 import { runAction } from "@/lib/actions";
-import type { TxnInputRaw } from "@/lib/validation";
+import type {
+  HoldingsInputRaw,
+  InvestmentInputRaw,
+  InvestmentReturnRaw,
+  LoanInputRaw,
+  LoanRepaymentRaw,
+  TxnInputRaw,
+} from "@/lib/validation";
 import {
   createTransaction,
   createTransactionOnce,
@@ -10,6 +17,16 @@ import {
   updateTransaction,
 } from "@/lib/services/transactions";
 import { moveSavings, saveGoal, deleteGoal } from "@/lib/services/savings";
+import { setHoldings } from "@/lib/services/holdings";
+import { deleteLoan, deleteLoanEntry, recordLoanRepayment, saveLoan } from "@/lib/services/loans";
+import {
+  deleteInvestment,
+  deleteInvestmentEntry,
+  recordInvestmentReturn,
+  saveInvestment,
+  setInvestmentValue,
+} from "@/lib/services/investments";
+import { parseTaka } from "@/lib/money";
 import { recordPersonPayment, saveAllocation, deleteAllocation, savePerson, deletePerson, setPersonArchived } from "@/lib/services/people";
 import { saveRecurringBill, deleteRecurringBill } from "@/lib/services/bills";
 import { saveCategory, deleteCategory, saveAccount, setDefaultAccount, setAccountArchived, deleteAccount } from "@/lib/services/categories";
@@ -46,6 +63,48 @@ export async function deleteTransactionAction(id: string) {
 }
 export async function markPaidAction(id: string, date?: string) {
   return runAction((uid) => markTransactionPaid(uid, assertId(id), date), "Marked as paid");
+}
+
+/* Bank / Cash / Mobile Banking split */
+export async function setHoldingsAction(input: HoldingsInputRaw) {
+  return runAction((uid) => setHoldings(uid, input), "Balance split saved — the total is unchanged");
+}
+
+/* Lending & borrowing */
+export async function saveLoanAction(input: LoanInputRaw, id?: string) {
+  return runAction((uid) => saveLoan(uid, input, id ? assertId(id) : undefined), id ? "Loan updated" : "Loan recorded");
+}
+export async function recordLoanRepaymentAction(loanId: string, input: LoanRepaymentRaw) {
+  return runAction((uid) => recordLoanRepayment(uid, assertId(loanId), input), "Repayment recorded");
+}
+export async function deleteLoanEntryAction(loanId: string, txnId: string) {
+  return runAction((uid) => deleteLoanEntry(uid, assertId(loanId), assertId(txnId)), "Entry removed — balances recalculated");
+}
+export async function deleteLoanAction(loanId: string) {
+  return runAction((uid) => deleteLoan(uid, assertId(loanId)), "Loan deleted — balances recalculated");
+}
+
+/* Investments */
+export async function saveInvestmentAction(input: InvestmentInputRaw, id?: string) {
+  return runAction((uid) => saveInvestment(uid, input, id ? assertId(id) : undefined), id ? "Investment updated" : "Investment recorded");
+}
+export async function recordInvestmentReturnAction(id: string, input: InvestmentReturnRaw) {
+  return runAction((uid) => recordInvestmentReturn(uid, assertId(id), input), "Return recorded");
+}
+export async function setInvestmentValueAction(id: string, value: string) {
+  return runAction((uid) => {
+    // Empty clears the value; anything else must be a valid amount.
+    if (value.trim() === "") return setInvestmentValue(uid, assertId(id), null);
+    const v = parseTaka(value);
+    if (v === null || v < 0) throw new AppError("Enter a valid value");
+    return setInvestmentValue(uid, assertId(id), v);
+  }, "Current value saved");
+}
+export async function deleteInvestmentEntryAction(id: string, txnId: string) {
+  return runAction((uid) => deleteInvestmentEntry(uid, assertId(id), assertId(txnId)), "Entry removed — balances recalculated");
+}
+export async function deleteInvestmentAction(id: string) {
+  return runAction((uid) => deleteInvestment(uid, assertId(id)), "Investment deleted — balances recalculated");
 }
 
 /* Savings */

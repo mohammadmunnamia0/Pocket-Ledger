@@ -17,7 +17,7 @@ import { formatDate, formatMonthLong } from "@/lib/dates";
 import type { TxnDTO } from "@/lib/services/transactions";
 import type { TxnInputRaw } from "@/lib/validation";
 import type { ActionResult } from "@/lib/errors";
-import { offlineCreate, offlineUpdate, saveWithFallback } from "@/lib/offline/hooks";
+import { newSaveId, offlineCreate, offlineUpdate, saveWithFallback, savedOnDevice } from "@/lib/offline/hooks";
 
 export interface FormLookups {
   categories: CategoryChoice[];
@@ -148,16 +148,20 @@ export function TransactionForm({
     if (mode === "transfer") Object.assign(payload, { toAccountId: toAccountId || undefined, title: title || "Transfer between accounts" });
 
     setErrors({});
+    // One id per save: if the server is slow and the change is queued instead, a late arrival isn't applied twice.
+    const saveId = newSaveId();
     const save = onSave
       ? () => onSave(payload)
       : () =>
           saveWithFallback(
-            () => (initial ? updateTransactionAction(initial.id, payload) : createTransactionAction(payload)),
-            () => (initial ? offlineUpdate(initial, payload) : offlineCreate(payload)),
+            () => (initial ? updateTransactionAction(initial.id, payload, saveId) : createTransactionAction(payload, saveId)),
+            () => (initial ? offlineUpdate(initial, payload, saveId) : offlineCreate(payload, saveId)),
           );
     run<unknown>(save, {
       onSuccess: () => {
         if (onDone) onDone();
+        // Kept on the device: a full page load lets the offline app open instead of waiting on the server.
+        else if (redirectTo && savedOnDevice()) window.location.assign(redirectTo);
         else if (redirectTo) router.push(redirectTo);
         if (!initial && !onDone && !redirectTo) {
           setTitle("");

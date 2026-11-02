@@ -518,4 +518,25 @@ describe("offline sync", () => {
     expect(await Transaction.countDocuments({ userId, title: "Phone" })).toBe(1);
     await expectIntegrity();
   });
+
+  it("a slow online save that was also queued on the device is stored once", async () => {
+    const { applyOperation } = await import("@/lib/services/sync");
+    const { createTransactionOnce } = await import("@/lib/services/transactions");
+    await salary(5000, "2027-01-01");
+
+    // The online save landed after the device gave up waiting and queued it with the same id.
+    const id = await createTransactionOnce(userId, payload("Snacks", "40", "2027-01-02"), "slow-save-0001");
+    expect(await createTransactionOnce(userId, payload("Snacks", "40", "2027-01-02"), "slow-save-0001")).toBe(id);
+    const queued = await applyOperation(userId, { opId: "op-slow-create", kind: "create", clientRef: "slow-save-0001", payload: payload("Snacks", "40", "2027-01-02") });
+    expect(queued).toMatchObject({ status: "applied", txnId: id });
+    expect(await Transaction.countDocuments({ userId, title: "Snacks" })).toBe(1);
+
+    // Same for an edit: the queued copy (same opId, older base) is recognised, not a conflict.
+    const base = (await getTransactionDetail(userId, id))!.txn.updatedAt;
+    await updateTransaction(userId, id, payload("Snacks", "45", "2027-01-02"), { opId: "slow-save-0002" });
+    const queuedEdit = await applyOperation(userId, { opId: "slow-save-0002", kind: "update", txnId: id, baseUpdatedAt: base, payload: payload("Snacks", "45", "2027-01-02") });
+    expect(queuedEdit.status).toBe("applied");
+    expect((await getTransactionDetail(userId, id))!.txn.amount).toBe(tk(45));
+    await expectIntegrity();
+  });
 });

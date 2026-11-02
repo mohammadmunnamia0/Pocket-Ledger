@@ -8,7 +8,9 @@
  *  - Sync pushes the outbox strictly in order (one change per request), then pulls the
  *    latest snapshot. A rejected or conflicting change stops the queue until resolved,
  *    so changes are never applied out of order or silently dropped.
- *  - A Web Lock serialises queue edits and syncing across tabs.
+ *  - Web Locks coordinate tabs: one guards the device copy, one lets a single tab sync.
+ *  - Every request has a time limit, so a connection that is "up" but gets no answer
+ *    (weak mobile data, Wi-Fi without internet) behaves like offline and retries by itself.
  */
 import {
   clearDevice,
@@ -126,14 +128,42 @@ async function reload() {
 
 /* ------------------------------------------------------------------ locking */
 
-let chain: Promise<unknown> = Promise.resolve();
-function withLock<T>(fn: () => Promise<T>): Promise<T> {
+const chains = new Map<string, Promise<unknown>>();
+function lock<T>(name: string, fn: () => Promise<T>): Promise<T> {
   if (typeof navigator !== "undefined" && navigator.locks?.request) {
-    return navigator.locks.request("pocketledger-ledger", fn) as Promise<T>;
+    return navigator.locks.request(name, fn) as Promise<T>;
   }
-  const run = chain.then(fn, fn);
-  chain = run.catch(() => undefined);
+  const run = (chains.get(name) ?? Promise.resolve()).then(fn, fn);
+  chains.set(name, run.catch(() => undefined));
   return run;
+}
+/** The device copy (snapshot + outbox) — held only for local reads/writes, never across a request. */
+const withLock = <T,>(fn: () => Promise<T>) => lock("pocketledger-ledger", fn);
+/** Only one tab syncs at a time. */
+const withSyncLock = <T,>(fn: () => Promise<T>) => lock("pocketledger-sync", fn);
+
+/* ------------------------------------------------------------------ network */
+
+const PUSH_TIMEOUT = 20_000;
+const PULL_TIMEOUT = 30_000;
+
+/** fetch with a time limit: a request that gets no answer fails like a lost connection. */
+function fetchWithin(url: string, init: RequestInit, ms: number) {
+  return fetch(url, { ...init, signal: AbortSignal.timeout(ms) });
+}
+
+/** The server couldn't be reached (no connection, dropped, or no answer in time). */
+export function isConnectionError(err: unknown) {
+  if (err instanceof TypeError) return true;
+  const name = (err as { name?: string } | null)?.name;
+  return name === "TimeoutError" || name === "AbortError" || (err instanceof Error && /fetch|network|load failed|connection/i.test(err.message));
+}
+
+/** A save got no answer although the device reports a connection: treat it as offline and keep retrying. */
+export function reportUnreachable() {
+  setState({ unreachable: true });
+  failures = Math.max(failures, 1);
+  scheduleRetry();
 }
 
 /* ------------------------------------------------------------------ start */
@@ -205,11 +235,10 @@ function checkFunding(snap: Snapshot, entries: OutboxEntry[], extra: OutboxEntry
 const labelFor = (raw: TxnInputRaw) => `${raw.title || "Entry"}${raw.amount ? ` · ৳${raw.amount}` : ""}`;
 
 /** Queue a new transaction. */
-export function queueCreate(raw: TxnInputRaw): Promise<QueueResult> {
+export function queueCreate(raw: TxnInputRaw, clientRef: string = uid()): Promise<QueueResult> {
   return withLock(async () => {
     await reload();
     if (!snapshot) return { ok: false, error: "This device has no saved copy yet — open the app once while online." };
-    const clientRef = uid();
     const id = LOCAL_PREFIX + clientRef;
     const v = validate(raw, snapshot, id);
     if (!v.ok) return v;
@@ -233,7 +262,7 @@ export function queueCreate(raw: TxnInputRaw): Promise<QueueResult> {
 }
 
 /** Queue an edit of an existing (or still-unsynced) transaction. */
-export function queueUpdate(target: { id: string; updatedAt: string }, raw: TxnInputRaw): Promise<QueueResult> {
+export function queueUpdate(target: { id: string; updatedAt: string }, raw: TxnInputRaw, newOpId: string = uid()): Promise<QueueResult> {
   return withLock(async () => {
     await reload();
     if (!snapshot) return { ok: false, error: "This device has no saved copy yet — open the app once while online." };
@@ -251,7 +280,7 @@ export function queueUpdate(target: { id: string; updatedAt: string }, raw: TxnI
     if (existing) {
       entry = { ...existing, op: { ...existing.op, payload: raw } as SyncOperation, status: "pending", error: undefined, label: `${existing.op.kind === "create" ? "Add" : "Edit"} ${labelFor(raw)}` };
     } else {
-      const opId = uid();
+      const opId = newOpId;
       entry = {
         opId,
         seq: nextSeq(),
@@ -358,7 +387,7 @@ export function syncNow(opts: { pull?: boolean } = {}): Promise<void> {
     setState({ online: false });
     return Promise.resolve();
   }
-  syncing = withLock(() => runSync(opts.pull ?? true)).finally(() => {
+  syncing = withSyncLock(() => runSync(opts.pull ?? true)).finally(() => {
     syncing = null;
   });
   return syncing;
@@ -369,30 +398,36 @@ async function runSync(pull: boolean) {
   let pushedAny = false;
   let error: string | null = null;
   try {
-    await reload();
+    await withLock(reload);
     const resolvedIds = new Map<string, { id: string; updatedAt: string | null }>();
 
     const order = mine(await readOutbox()).map((e) => e.opId);
     for (const opId of order) {
-      // Re-read: applying an earlier change may have re-based this one.
-      const entry = mine(await readOutbox()).find((e) => e.opId === opId);
-      if (!entry) continue;
-      if (entry.status !== "pending") break; // waiting for a decision — keep order
-      let op = entry.op;
-      // A change to a record created earlier in this queue: point it at the server's record.
-      if (op.kind !== "create" && isLocalId(op.txnId)) {
-        const r = resolvedIds.get(op.txnId);
-        if (!r) break;
-        op = { ...op, txnId: r.id, baseUpdatedAt: r.updatedAt ?? op.baseUpdatedAt };
-      }
-      await putEntry({ ...entry, op, attempts: entry.attempts + 1 });
-
-      const res = await fetch("/api/sync/push", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ops: [op] }),
-        cache: "no-store",
+      const op = await withLock(async () => {
+        // Re-read: applying an earlier change may have re-based this one.
+        const entry = mine(await readOutbox()).find((e) => e.opId === opId);
+        if (!entry) return "skip" as const;
+        if (entry.status !== "pending") return "stop" as const; // waiting for a decision — keep order
+        let next = entry.op;
+        // A change to a record created earlier in this queue: point it at the server's record.
+        if (next.kind !== "create" && isLocalId(next.txnId)) {
+          const r = resolvedIds.get(next.txnId);
+          if (!r) return "stop" as const;
+          next = { ...next, txnId: r.id, baseUpdatedAt: r.updatedAt ?? next.baseUpdatedAt };
+        }
+        // attempts > 0 marks it as sent: later edits on this device no longer fold into it.
+        await putEntry({ ...entry, op: next, attempts: entry.attempts + 1 });
+        return next;
       });
+      if (op === "skip") continue;
+      if (op === "stop") break;
+
+      // Waiting on the network happens outside the lock, so the device can keep saving changes.
+      const res = await fetchWithin(
+        "/api/sync/push",
+        { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ops: [op] }), cache: "no-store" },
+        PUSH_TIMEOUT,
+      );
       if (res.status === 401) {
         setState({ signedOut: true });
         error = "Signed out — sign in to sync your changes.";
@@ -401,28 +436,30 @@ async function runSync(pull: boolean) {
       if (!res.ok) throw new Error(`Server error ${res.status}`);
       const { results } = (await res.json()) as { results: SyncResult[] };
       const r = results[0];
-      setState({ signedOut: false });
+      setState({ signedOut: false, unreachable: false });
 
-      if (r.status === "applied") {
-        await deleteEntry(entry.opId);
-        pushedAny = true;
-        const localKey = op.kind === "create" ? LOCAL_PREFIX + op.clientRef : op.txnId;
-        if (r.txnId) {
-          resolvedIds.set(localKey, { id: r.txnId, updatedAt: r.updatedAt });
-          // Later queued edits of this record were based on the version before this change.
-          for (const later of mine(await readOutbox())) {
-            if (later.op.kind !== "create" && (later.op.txnId === localKey || later.op.txnId === r.txnId)) {
-              await putEntry({ ...later, op: { ...later.op, txnId: r.txnId, baseUpdatedAt: r.updatedAt ?? later.op.baseUpdatedAt } });
+      await withLock(async () => {
+        if (r.status === "applied") {
+          await deleteEntry(opId);
+          pushedAny = true;
+          const localKey = op.kind === "create" ? LOCAL_PREFIX + op.clientRef : op.txnId;
+          if (r.txnId) {
+            resolvedIds.set(localKey, { id: r.txnId, updatedAt: r.updatedAt });
+            // Later queued edits of this record were based on the version before this change.
+            for (const later of mine(await readOutbox())) {
+              if (later.op.kind !== "create" && (later.op.txnId === localKey || later.op.txnId === r.txnId)) {
+                await putEntry({ ...later, op: { ...later.op, txnId: r.txnId, baseUpdatedAt: r.updatedAt ?? later.op.baseUpdatedAt } });
+              }
             }
           }
+          return;
         }
-      } else if (r.status === "conflict") {
-        await putEntry({ ...entry, op, attempts: entry.attempts + 1, status: "conflict", error: r.message, server: r.server });
-        break;
-      } else {
-        await putEntry({ ...entry, op, attempts: entry.attempts + 1, status: "failed", error: r.error });
-        break;
-      }
+        const entry = (await readOutbox()).find((e) => e.opId === opId);
+        if (!entry) return;
+        if (r.status === "conflict") await putEntry({ ...entry, op, status: "conflict", error: r.message, server: r.server });
+        else await putEntry({ ...entry, op, status: "failed", error: r.error });
+      });
+      if (r.status !== "applied") break;
     }
 
     if (pull && !state.signedOut) await pullSnapshot();
@@ -430,13 +467,14 @@ async function runSync(pull: boolean) {
     setState({ unreachable: false });
   } catch (err) {
     failures++;
-    error = err instanceof TypeError ? "Can't reach the server — will retry automatically." : (err as Error).message;
-    setState({ unreachable: err instanceof TypeError });
+    const unreachable = isConnectionError(err);
+    error = unreachable ? "Can't reach the server — will retry automatically." : (err as Error).message;
+    setState({ unreachable });
     scheduleRetry();
   } finally {
     const lastSyncAt = error ? state.lastSyncAt : new Date().toISOString();
     await writeMeta({ lastSyncAt, lastError: error });
-    await reload();
+    await withLock(reload);
     setState({ syncing: false, lastSyncAt, lastError: error });
     if (pushedAny) {
       changed();
@@ -446,10 +484,11 @@ async function runSync(pull: boolean) {
 }
 
 async function pullSnapshot() {
-  const res = await fetch("/api/sync/snapshot", {
-    headers: snapshot ? { "If-None-Match": `"${snapshot.version}"` } : {},
-    cache: "no-store",
-  });
+  const res = await fetchWithin(
+    "/api/sync/snapshot",
+    { headers: snapshot ? { "If-None-Match": `"${snapshot.version}"` } : {}, cache: "no-store" },
+    PULL_TIMEOUT,
+  );
   if (res.status === 304) return;
   if (res.status === 401) {
     setState({ signedOut: true });
@@ -458,13 +497,14 @@ async function pullSnapshot() {
   if (!res.ok) throw new Error(`Server error ${res.status}`);
   const next = (await res.json()) as Snapshot;
   if (state.userId && next.user.id !== state.userId) return;
-  await writeSnapshot(next);
+  await withLock(() => writeSnapshot(next));
   setState({ userId: next.user.id });
 }
 
 function scheduleRetry() {
   if (retryTimer) clearTimeout(retryTimer);
-  const delay = Math.min(5 * 60_000, 15_000 * 2 ** Math.min(failures - 1, 5));
+  // 15s, 30s, then every minute — changes go up soon after the connection really returns.
+  const delay = Math.min(60_000, 15_000 * 2 ** Math.max(0, failures - 1));
   retryTimer = setTimeout(() => void syncNow(), delay);
 }
 

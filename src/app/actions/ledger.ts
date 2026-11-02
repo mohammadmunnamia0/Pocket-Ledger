@@ -4,6 +4,7 @@ import { runAction } from "@/lib/actions";
 import type { TxnInputRaw } from "@/lib/validation";
 import {
   createTransaction,
+  createTransactionOnce,
   deleteTransaction,
   markTransactionPaid,
   updateTransaction,
@@ -24,11 +25,21 @@ function assertId(id: string) {
 }
 
 /* Transactions */
-export async function createTransactionAction(input: TxnInputRaw) {
-  return runAction((uid) => createTransaction(uid, input), "Saved");
+/** Optional per-save id from the device, so a save that is retried offline is never applied twice. */
+function saveId(id: unknown) {
+  if (id === undefined) return undefined;
+  if (typeof id !== "string" || id.length < 8 || id.length > 64) throw new AppError("Invalid reference");
+  return id;
 }
-export async function updateTransactionAction(id: string, input: TxnInputRaw) {
-  return runAction((uid) => updateTransaction(uid, assertId(id), input), "Changes saved");
+
+export async function createTransactionAction(input: TxnInputRaw, clientRef?: string) {
+  return runAction((uid) => {
+    const ref = saveId(clientRef);
+    return ref ? createTransactionOnce(uid, input, ref) : createTransaction(uid, input);
+  }, "Saved");
+}
+export async function updateTransactionAction(id: string, input: TxnInputRaw, opId?: string) {
+  return runAction((uid) => updateTransaction(uid, assertId(id), input, { opId: saveId(opId) }), "Changes saved");
 }
 export async function deleteTransactionAction(id: string) {
   return runAction((uid) => deleteTransaction(uid, assertId(id)), "Deleted — balances recalculated");

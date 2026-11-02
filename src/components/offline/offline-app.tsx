@@ -17,7 +17,7 @@ import { ConfirmButton } from "@/components/confirm-button";
 import { TransactionForm } from "@/components/transaction-form";
 import { SyncIndicator } from "@/components/sync/sync-indicator";
 import { useAction } from "@/components/use-action";
-import { startSync } from "@/lib/offline/engine";
+import { reportUnreachable, startSync } from "@/lib/offline/engine";
 import { offlineCreate, offlineDelete, offlineUpdate, useLocalData, useSyncState } from "@/lib/offline/hooks";
 import { buildLocalTxns, localFigures, toInput, type LocalTxn } from "@/lib/offline/view";
 import { expenseLines, groupByCategory, runningBalances, sortLedger, spendableDelta, summarizePeriod } from "@/lib/ledger/model";
@@ -75,6 +75,9 @@ export function OfflineApp() {
   const today = useSyncExternalStore(noSubscribe, todayISO, () => null);
 
   useEffect(() => {
+    // This app only opens when the server didn't answer — even if the device says it's online.
+    // The first successful sync clears this.
+    if (navigator.onLine) reportUnreachable();
     void startSync();
   }, []);
 

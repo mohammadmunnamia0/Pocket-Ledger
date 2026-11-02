@@ -10,7 +10,7 @@ import { CategoryOptions, Field, NativeSelect, type CategoryChoice } from "@/com
 import { useAction } from "@/components/use-action";
 import { HelpButton } from "@/components/help";
 import { createTransactionAction } from "@/app/actions/ledger";
-import { offlineCreate, saveWithFallback } from "@/lib/offline/hooks";
+import { newSaveId, offlineCreate, saveWithFallback } from "@/lib/offline/hooks";
 import { PAYMENT_METHODS, type PaymentMethod } from "@/lib/constants";
 import { PAYMENT_METHOD_LABELS } from "@/lib/labels";
 import { todayISO } from "@/lib/dates";
@@ -65,7 +65,8 @@ export function QuickAdd({
           personId: personId || undefined,
         };
         // Offline (or the connection drops): keep it on the device and sync later.
-        return saveWithFallback(() => createTransactionAction(payload), () => offlineCreate(payload));
+        const clientRef = newSaveId(); // shared, so a slow save that is also queued is stored once
+        return saveWithFallback(() => createTransactionAction(payload, clientRef), () => offlineCreate(payload, clientRef));
       },
       {
         success: `Added “${title}”`,

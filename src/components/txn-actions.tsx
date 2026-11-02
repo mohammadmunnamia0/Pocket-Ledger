@@ -10,7 +10,7 @@ import { ConfirmButton } from "@/components/confirm-button";
 import { useAction } from "@/components/use-action";
 import { deleteTransactionAction, markPaidAction } from "@/app/actions/ledger";
 import { todayISO } from "@/lib/dates";
-import { offlineDelete, saveWithFallback } from "@/lib/offline/hooks";
+import { offlineDelete, saveWithFallback, savedOnDevice } from "@/lib/offline/hooks";
 
 export function DeleteTxnButton({
   id,
@@ -36,7 +36,7 @@ export function DeleteTxnButton({
           ? saveWithFallback(() => deleteTransactionAction(id), () => offlineDelete({ id, updatedAt, title }))
           : deleteTransactionAction(id)
       }
-      onDone={() => redirectTo && router.push(redirectTo)}
+      onDone={() => redirectTo && (savedOnDevice() ? window.location.assign(redirectTo) : router.push(redirectTo))}
       variant={iconOnly ? "ghost" : "destructive"}
       size={iconOnly ? "icon-xs" : "sm"}
     >

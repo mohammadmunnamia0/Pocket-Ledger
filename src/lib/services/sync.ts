@@ -3,7 +3,7 @@ import { connectDB } from "../db/connect";
 import { PersonAllocation, SavingsGoal, SyncOp, Transaction, User, oid, isObjectId } from "../db/models";
 import { AppError } from "../errors";
 import { getLookups } from "./lookups";
-import { createTransaction, deleteTransaction, toTxnDTO, updateTransaction } from "./transactions";
+import { createTransactionOnce, deleteTransaction, toTxnDTO, updateTransaction } from "./transactions";
 import type { Snapshot, SyncOperation, SyncResult } from "../sync/types";
 
 async function stampOf(txnId: string): Promise<string | null> {
@@ -53,8 +53,7 @@ export async function applyOperation(userId: string, op: SyncOperation): Promise
   let result: SyncResult;
   try {
     if (op.kind === "create") {
-      const existing = await Transaction.findOne({ userId: uid, clientRef: op.clientRef }, { _id: 1 }).lean();
-      const txnId = existing ? existing._id.toString() : await createTransaction(userId, op.payload, { clientRef: op.clientRef });
+      const txnId = await createTransactionOnce(userId, op.payload, op.clientRef);
       result = { opId: op.opId, status: "applied", txnId, updatedAt: await stampOf(txnId) };
     } else {
       if (!isObjectId(op.txnId)) throw new AppError("Invalid record reference");

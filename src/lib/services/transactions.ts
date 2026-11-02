@@ -231,6 +231,16 @@ export async function createTransaction(
   return id;
 }
 
+/**
+ * Create, unless this device's id (clientRef) was already saved — a retried or late-arriving
+ * save then returns the existing record instead of adding a duplicate.
+ */
+export async function createTransactionOnce(userId: string, raw: TxnInputRaw, clientRef: string): Promise<string> {
+  await connectDB();
+  const existing = await Transaction.findOne({ userId: oid(userId), clientRef }, { _id: 1 }).lean();
+  return existing ? existing._id.toString() : createTransaction(userId, raw, { clientRef });
+}
+
 export async function updateTransaction(userId: string, id: string, raw: TxnInputRaw, opts: { opId?: string } = {}): Promise<void> {
   const input = txnInputSchema.parse(raw);
   await connectDB();

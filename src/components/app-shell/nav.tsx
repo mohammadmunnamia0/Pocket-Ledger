@@ -24,6 +24,7 @@ import {
 import { cn } from "@/lib/utils";
 import { HelpButton } from "@/components/help";
 import type { HelpKey } from "@/lib/help-content";
+import { BUSINESSES } from "@/lib/business/registry";
 
 /** MongoDB database account, shown under the app name in the sidebar as "DB - …". */
 export const OWNER_EMAIL = "mohammadmunna4141@gmail.com";
@@ -31,7 +32,8 @@ export const OWNER_EMAIL = "mohammadmunna4141@gmail.com";
 export const NAV_ITEMS = [
   { href: "/", label: "All accounts", icon: LayoutGrid, help: "home" },
   { href: "/personal", label: "Dashboard", icon: LayoutDashboard, help: "dashboard" },
-  { href: "/business/alwin-bd", label: "Alwin BD", icon: Store, help: "business" },
+  // One entry per business that is switched on (same accounting screen for each).
+  ...BUSINESSES.filter((b) => b.available).map((b) => ({ href: `/business/${b.key}`, label: b.name, icon: Store, help: "business" as const })),
   { href: "/transactions", label: "Transactions", icon: ArrowLeftRight, help: "transactions" },
   { href: "/expenses/new", label: "Add Expense", icon: PlusCircle, help: "addExpense" },
   { href: "/income", label: "Income & Salary", icon: Wallet, help: "income" },

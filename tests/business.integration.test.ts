@@ -192,3 +192,45 @@ describe("separation and safeguards", () => {
     await expect(setupBusiness(userId, "alwin-bd", { name: "Alwin BD", openingBalance: "0", openingDate: "2026-10-06" })).rejects.toThrow(/on or before the first transaction/);
   });
 });
+
+describe("ReturnHex (Phase 3) — the same system, its own records", () => {
+  it("opening ৳24,778 → Tonmoy +4,000 → Alwin BD −16,000 (linked) → Suraiya −4,010 = ৳8,768", async () => {
+    // Set up through the app's own path (beforeEach only created a stand-in record).
+    await Business.deleteMany({ userId: new mongoose.Types.ObjectId(userId), key: "returnhex" });
+    await setupBusiness(userId, "returnhex", { name: "ReturnHex", type: "IT Firm", openingBalance: "24778", openingDate: "2026-10-08" });
+    const alwinBefore = (await ledger()).overall.closingBalance;
+
+    await add("owner_investment", "Tonmoy Investment", 4000, "2026-10-09", "returnhex");
+    const alwinId = (await listBusinessCards(userId)).find((c) => c.key === "alwin-bd")!.business!.id;
+    const ref = await saveInterBusiness(userId, "returnhex", { interKind: "investment", direction: "out", otherBusinessId: alwinId, title: "Investment in Alwin BD", amount: "16000", date: "2026-10-09" });
+    await add("other_out", "Suraiya Payment", 4010, "2026-10-09", "returnhex");
+
+    const r = await ledger("returnhex");
+    expect(r.overall.openingBalance).toBe(tk(24778));
+    expect(r.rows.map((x) => [x.date, x.title, x.balance / 100])).toEqual([
+      ["2026-10-09", "Tonmoy Investment", 28778],
+      ["2026-10-09", "Investment in Alwin BD", 12778],
+      ["2026-10-09", "Suraiya Payment", 8768],
+    ]);
+    expect(r.overall).toMatchObject({ moneyIn: tk(4000), moneyOut: tk(20010), investmentsReceived: tk(4000), investedInOthers: tk(16000), closingBalance: tk(8768) });
+
+    // The opening balance is not income or investment.
+    expect(r.overall.income).toBe(0);
+
+    // The ৳16,000 is one linked transaction: −16,000 here, +16,000 in Alwin BD, same reference.
+    const alwin = await ledger();
+    const inSide = alwin.rows.find((x) => x.linkRef === ref)!;
+    expect([inSide.kind, inSide.amount, inSide.other?.name]).toEqual(["investment_from_business", tk(16000), "ReturnHex"]);
+    expect(alwin.overall.closingBalance).toBe(alwinBefore + tk(16000));
+    expect(await BusinessTxn.countDocuments({ linkRef: ref })).toBe(2);
+
+    // ReturnHex's own transactions never touch Alwin BD.
+    await add("expense", "Server rent", 500, "2026-10-10", "returnhex");
+    expect((await ledger()).overall.closingBalance).toBe(alwinBefore + tk(16000));
+    expect((await ledger("returnhex")).overall.closingBalance).toBe(tk(8268));
+
+    // Date filter on ReturnHex: 9 Oct opens at the opening balance and closes at ৳8,768.
+    const day = await ledger("returnhex", { period: "date", date: "2026-10-09" });
+    expect([day.period.openingBalance, day.period.moneyIn, day.period.moneyOut, day.period.closingBalance].map((v) => v / 100)).toEqual([24778, 4000, 20010, 8768]);
+  });
+});

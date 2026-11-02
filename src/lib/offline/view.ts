@@ -8,6 +8,7 @@ import { computeAllocations, computeDashboardFigures } from "../ledger/model";
 import { txnInputSchema, type TxnInputRaw } from "../validation";
 import { formatDate } from "../dates";
 import { formatTaka } from "../money";
+import { HOLDING_KINDS, IN_TYPES } from "../constants";
 import type { Snapshot } from "../sync/types";
 import type { TxnDTO } from "../services/transactions";
 import type { OutboxEntry } from "./db";
@@ -111,6 +112,37 @@ export function fundingProblem(txns: LocalTxn[], changedId: string): string | nu
     `Insufficient funds: ${what} needs ${formatTaka(s.required)} but only ${formatTaka(s.funded)} was available ` +
     `from salaries received by ${formatDate(s.date)}. Record the income first or reduce the amount.`
   );
+}
+
+/** Balance per account from paid transactions (as the server counts them; savings moves stay in their account). */
+function accountBalances(txns: LocalTxn[]): Map<string, number> {
+  const bal = new Map<string, number>();
+  const add = (id: string | null, v: number) => id && bal.set(id, (bal.get(id) ?? 0) + v);
+  for (const t of txns) {
+    if (t.status !== "paid" || t.type.startsWith("savings_")) continue;
+    if (t.type === "transfer") {
+      add(t.accountId, -t.amount);
+      add(t.toAccountId, t.amount);
+    } else add(t.accountId, IN_TYPES.includes(t.type) ? t.amount : -t.amount);
+  }
+  return bal;
+}
+
+/**
+ * The same rule as the server: a change can't take Bank, Cash or Mobile Banking below zero
+ * (accounts that don't go down are never refused).
+ */
+export function accountProblem(snap: Snapshot, before: LocalTxn[], after: LocalTxn[]): string | null {
+  const b = accountBalances(before);
+  const a = accountBalances(after);
+  for (const [id, now] of a) {
+    const was = b.get(id) ?? 0;
+    if (now >= 0 || now >= was) continue;
+    const acc = snap.lookups.accounts.find((x) => x.id === id);
+    if (!acc || !(HOLDING_KINDS as readonly string[]).includes(acc.kind)) continue;
+    return `Not enough money in ${acc.name}: it has ${formatTaka(Math.max(0, was))}, this needs ${formatTaka(was - now)}. Choose another place to pay from, or move money into ${acc.name} first.`;
+  }
+  return null;
 }
 
 /** A stored transaction back as form input (for offline edits such as "mark paid"). */

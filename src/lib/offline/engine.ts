@@ -24,7 +24,7 @@ import {
   writeSnapshot,
   type OutboxEntry,
 } from "./db";
-import { LOCAL_PREFIX, buildLocalTxns, fundingProblem, isLocalId, toLocalTxn, type LocalTxn } from "./view";
+import { LOCAL_PREFIX, accountProblem, buildLocalTxns, fundingProblem, isLocalId, toLocalTxn, type LocalTxn } from "./view";
 import type { Snapshot, SyncOperation, SyncResult } from "../sync/types";
 import type { TxnInputRaw } from "../validation";
 
@@ -229,7 +229,8 @@ function validate(raw: TxnInputRaw, snap: Snapshot, id: string): { ok: true; txn
 
 /** Apply the change to the local view and run the same FIFO funding check as the server. */
 function checkFunding(snap: Snapshot, entries: OutboxEntry[], extra: OutboxEntry, changedId: string): string | null {
-  return fundingProblem(buildLocalTxns(snap, [...entries, extra]), changedId);
+  const after = buildLocalTxns(snap, [...entries, extra]);
+  return fundingProblem(after, changedId) ?? accountProblem(snap, buildLocalTxns(snap, entries), after);
 }
 
 const labelFor = (raw: TxnInputRaw) => `${raw.title || "Entry"}${raw.amount ? ` · ৳${raw.amount}` : ""}`;

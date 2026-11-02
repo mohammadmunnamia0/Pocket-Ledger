@@ -173,9 +173,9 @@ describe("lending", () => {
 
 describe("borrowing", () => {
   it("Karim example: ৳10,000 borrowed into Bank — not salary or income — repaid in parts", async () => {
-    await salary(3000, "2026-10-01");
+    await salary(3000, "2026-10-01", acct.bank); // so Bank holds enough for the ৳12,000 laptop
     const id = await saveLoan(userId, { direction: "borrowed", person: "Karim", amount: "10000", date: "2026-10-12", dueDate: "2026-10-30", accountId: acct.bank, note: "Business Funding" });
-    expect(await holding("bank")).toBe(tk(10000));
+    expect(await holding("bank")).toBe(tk(13000)); // salary 3,000 + borrowed 10,000
     expect(await spendable()).toBe(tk(13000));
 
     const report = await getMonthReport(userId, "2026-10");
@@ -290,7 +290,7 @@ describe("personal date filter statement", () => {
     const { parseTxnFilters } = await import("@/lib/filters");
     await salary(10000, "2026-10-01");
     await expense("Groceries", 500, "2026-10-05");
-    await createTransaction(userId, { type: "transfer", title: "ATM", amount: "2000", date: "2026-10-06", accountId: acct.bank, toAccountId: acct.cash });
+    await createTransaction(userId, { type: "transfer", title: "To bank", amount: "2000", date: "2026-10-06", accountId: acct.cash, toAccountId: acct.bank });
     await saveLoan(userId, { direction: "lent", person: "Rahim", amount: "1000", date: "2026-10-06", accountId: acct.cash });
     await createTransaction(userId, { type: "income", title: "Freelance", amount: "700", date: "2026-10-08", incomeKind: "other", accountId: acct.mobile });
     await expense("Fuel", 300, "2026-10-12");
@@ -307,5 +307,42 @@ describe("personal date filter statement", () => {
     expect(await statement({ period: "date", date: "2026-10-12" })).toEqual({ opening: 9200, in: 0, out: 300, closing: 8900, real: 8900 });
     expect(await statement({ period: "week", date: "2026-10-08" })).toEqual({ opening: 10000, in: 700, out: 1500, closing: 9200, real: 9200 }); // Sat 3 – Fri 9
     expect(await statement({ period: "month", month: "2026-10" })).toEqual({ opening: 0, in: 10700, out: 1800, closing: 8900, real: 8900 });
+  });
+});
+
+describe("paying from a place that doesn't have enough is refused", () => {
+  it("10,000 / 2,000 / 1,350: ৳2,000 from Cash → Cash ৳0, total ৳11,350; then Cash can't pay more", async () => {
+    await salary(13350, "2026-10-01");
+    await setHoldings(userId, { date: "2026-10-02", holdings: [{ kind: "bank", amount: "10000" }, { kind: "cash", amount: "2000" }, { kind: "mobile", amount: "1350" }] });
+
+    const id = await createTransaction(userId, { type: "expense", title: "Bazar", amount: "2000", date: "2026-10-03", paymentMethod: "cash", accountId: acct.cash });
+    expect([await holding("bank"), await holding("cash"), await holding("mobile")]).toEqual([tk(10000), 0, tk(1350)]);
+    expect(await spendable()).toBe(tk(11350)); // deducted once: the place and the total move together
+
+    // Cash is empty: refused, nothing saved — even though the total (৳11,350) would cover it.
+    await expect(expense("Tea", 20, "2026-10-04", acct.cash)).rejects.toThrow(/Not enough money in Cash: it has ৳0, this needs ৳20/);
+    expect(await spendable()).toBe(tk(11350));
+    // Raising the Cash expense, or paying more than Mobile holds, is refused too.
+    await expect(updateTransaction(userId, id, { type: "expense", title: "Bazar", amount: "2500", date: "2026-10-03", paymentMethod: "cash", accountId: acct.cash })).rejects.toThrow(/Not enough money in Cash/);
+    await expect(expense("Recharge", 1400, "2026-10-04", acct.mobile)).rejects.toThrow(/Not enough money in Mobile Banking: it has ৳1,350/);
+    // Moving money out of Cash isn't possible either.
+    await expect(createTransaction(userId, { type: "transfer", title: "x", amount: "10", date: "2026-10-04", accountId: acct.cash, toAccountId: acct.bank })).rejects.toThrow(/Not enough money in Cash/);
+
+    // From a place that has it: fine.
+    await expense("Recharge", 1350, "2026-10-04", acct.mobile);
+    await createTransaction(userId, { type: "transfer", title: "ATM", amount: "500", date: "2026-10-05", accountId: acct.bank, toAccountId: acct.cash });
+    await expense("Tea", 20, "2026-10-05", acct.cash);
+    expect([await holding("bank"), await holding("cash"), await holding("mobile")]).toEqual([tk(9500), tk(480), 0]);
+    expect((await getHoldings(userId)).total).toBe(await spendable());
+    await expectIntegrity();
+  });
+
+  it("an account that is already below zero can still receive money", async () => {
+    await salary(1000, "2026-10-01", acct.cash);
+    // Old data: an expense recorded against Bank although Bank never held money (allowed before this rule).
+    await Transaction.create({ userId: new mongoose.Types.ObjectId(userId), type: "expense", status: "paid", title: "Old", amount: tk(300), date: "2026-10-02", attributionMonth: "2026-10", paymentMethod: "bank", accountId: new mongoose.Types.ObjectId(acct.bank), items: [] });
+    expect(await holding("bank")).toBe(-tk(300));
+    await createTransaction(userId, { type: "transfer", title: "Fix", amount: "300", date: "2026-10-03", accountId: acct.cash, toAccountId: acct.bank });
+    expect(await holding("bank")).toBe(0);
   });
 });

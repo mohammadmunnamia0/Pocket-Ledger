@@ -83,6 +83,10 @@ async function Dashboard() {
               value={p.remaining}
               hint={`${formatTaka(p.totalAvailable)} available − ${formatTaka(p.spends)} spent`}
             />
+            {/* Right under Remaining balance on phones; a full-width row below the sum on desktop. */}
+            <div className="col-span-2 lg:order-6 lg:col-span-5">
+              <HoldingsStrip holdings={d.holdings} remaining={p.remaining} />
+            </div>
             <OverviewCard
               className="lg:order-1"
               href="/income/history"
@@ -114,11 +118,6 @@ async function Dashboard() {
               value={p.spends}
               hint={`${p.paymentCount} payment${p.paymentCount === 1 ? "" : "s"} since ${formatDate(p.receivedOn)}${p.savedOrInvested ? ` · incl. ${formatTaka(p.savedOrInvested)} saved & invested` : ""}${p.lentOrRepaid ? ` · incl. ${formatTaka(p.lentOrRepaid)} lent or repaid (not spending)` : ""}`}
             />
-          </div>
-        )}
-        {p && (
-          <div className="mt-3">
-            <HoldingsStrip holdings={d.holdings} remaining={p.remaining} />
           </div>
         )}
       </section>

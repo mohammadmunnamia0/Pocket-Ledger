@@ -27,6 +27,7 @@ import { txnInputSchema, type TxnInput, type TxnInputRaw } from "../validation";
 import { deriveTxn } from "../ledger/derive";
 import { affectsFunding, recomputeFunding, withLedger } from "../ledger/engine";
 import { categoryMap, categoryWithChildren, getLookups, type Lookups } from "./lookups";
+import { assertNoOverdraw, getAccountBalances } from "./account-balances";
 
 /* ---------------------------------------------------------------- DTOs */
 
@@ -227,12 +228,15 @@ export async function createTransaction(
   if (opts.clientRef) doc.clientRef = opts.clientRef;
 
   const run = async (session: ClientSession) => {
+    // Historical imports are checked as a whole by FIFO funding instead (their order isn't chronological).
+    const before = opts.importBatch ? null : await getAccountBalances(userId, session);
     const [created] = await Transaction.create([doc], { session });
     const id = created._id.toString();
     if (affectsFunding(doc)) {
       await recomputeFunding(userId, doc.date, session, { reason: `Added “${doc.title}”`, triggerId: id });
     }
     if (doc.goalId) await assertGoalNeverNegative(userId, doc.goalId, session);
+    if (before) await assertNoOverdraw(userId, before, session);
     return id;
   };
 
@@ -279,6 +283,7 @@ export async function updateTransaction(
   if (opts.opId) next.lastOpId = opts.opId;
 
   const run = async (session: ClientSession) => {
+    const before = await getAccountBalances(userId, session);
     // $set (not replace) so createdAt — the same-day ordering key — is preserved.
     await Transaction.updateOne({ _id: existing._id, userId: uid }, { $set: next }, { session });
     if (affectsFunding(existing) || affectsFunding(next)) {
@@ -288,6 +293,7 @@ export async function updateTransaction(
     for (const goalId of new Set([existing.goalId?.toString(), next.goalId?.toString()])) {
       if (goalId) await assertGoalNeverNegative(userId, oid(goalId), session);
     }
+    await assertNoOverdraw(userId, before, session);
   };
   if (opts.session) await run(opts.session);
   else await withLedger(userId, run);
@@ -301,6 +307,7 @@ export async function deleteTransaction(userId: string, id: string, opts: { sess
   if (!opts.linked) assertNotLinked(existing);
 
   const run = async (session: ClientSession) => {
+    const before = await getAccountBalances(userId, session);
     await Transaction.deleteOne({ _id: existing._id, userId: uid }, { session });
     // Expenses that asked to be funded by this income fall back to plain FIFO.
     await Transaction.updateMany({ userId: uid, fundingSourceId: existing._id }, { $set: { fundingSourceId: null } }, { session });
@@ -308,6 +315,7 @@ export async function deleteTransaction(userId: string, id: string, opts: { sess
       await recomputeFunding(userId, existing.date, session, { reason: `Deleted “${existing.title}”` });
     }
     if (existing.goalId) await assertGoalNeverNegative(userId, existing.goalId, session);
+    await assertNoOverdraw(userId, before, session);
   };
   if (opts.session) await run(opts.session);
   else await withLedger(userId, run);
@@ -334,9 +342,11 @@ export async function markTransactionPaid(userId: string, id: string, paidDate?:
   const date = paidDate ?? existing.date;
 
   await withLedger(userId, async (session) => {
+    const before = await getAccountBalances(userId, session);
     await Transaction.updateOne({ _id: existing._id }, { $set: { status: "paid", date } }, { session });
     const fromDate = existing.date < date ? existing.date : date;
     await recomputeFunding(userId, fromDate, session, { reason: `Marked “${existing.title}” paid`, triggerId: id });
+    await assertNoOverdraw(userId, before, session);
   });
 }
 

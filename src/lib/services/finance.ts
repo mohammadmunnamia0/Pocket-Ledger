@@ -1,6 +1,5 @@
-import type { Types } from "mongoose";
 import { connectDB } from "../db/connect";
-import { SavingsGoal, Transaction, oid } from "../db/models";
+import { Transaction, oid } from "../db/models";
 import { addMonths, monthEnd, monthOf, monthStart, todayISO } from "../dates";
 import { categoryWithChildren, getLookups, type Lookups } from "./lookups";
 import { SPENDABLE_DELTA_EXPR, toTxnDTO, type TxnDTO } from "./transactions";
@@ -64,60 +63,7 @@ export async function getBalanceSummary(userId: string, asOf: string = todayISO(
   };
 }
 
-/** Physical balance per account. Savings deposits move money to the goal's linked account, if any. */
-export async function getAccountBalances(userId: string): Promise<Map<string, number>> {
-  await connectDB();
-  const uid = oid(userId);
-  const [groups, goals] = await Promise.all([
-    Transaction.aggregate<{ _id: { type: string; a: Types.ObjectId | null; to: Types.ObjectId | null; g: Types.ObjectId | null }; v: number }>([
-      { $match: { userId: uid, status: "paid" } },
-      { $group: { _id: { type: "$type", a: "$accountId", to: "$toAccountId", g: "$goalId" }, v: { $sum: "$amount" } } },
-    ]),
-    SavingsGoal.find({ userId: uid }, { accountId: 1 }).lean(),
-  ]);
-  const goalAccount = new Map(goals.map((g) => [g._id.toString(), g.accountId?.toString() ?? null]));
-  const bal = new Map<string, number>();
-  const add = (acc: string | null | undefined, v: number) => {
-    if (!acc) return;
-    bal.set(acc, (bal.get(acc) ?? 0) + v);
-  };
-  for (const { _id, v } of groups) {
-    const a = _id.a?.toString();
-    switch (_id.type) {
-      case "income":
-      case "loan_in":
-      case "invest_in":
-        add(a, v);
-        break;
-      case "expense":
-      case "loan_out":
-      case "invest_out":
-        add(a, -v);
-        break;
-      case "transfer":
-        add(a, -v);
-        add(_id.to?.toString(), v);
-        break;
-      case "savings_deposit": {
-        const target = _id.g ? goalAccount.get(_id.g.toString()) : null;
-        if (target && target !== a) {
-          add(a, -v);
-          add(target, v);
-        }
-        break;
-      }
-      case "savings_withdrawal": {
-        const holder = _id.g ? goalAccount.get(_id.g.toString()) : null;
-        if (holder && holder !== a) {
-          add(holder, -v);
-          add(a, v);
-        }
-        break;
-      }
-    }
-  }
-  return bal;
-}
+export { getAccountBalances } from "./account-balances";
 
 /* ------------------------------------------------------------------ Period reports */
 

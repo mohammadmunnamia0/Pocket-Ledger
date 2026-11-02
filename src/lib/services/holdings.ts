@@ -40,7 +40,8 @@ const DEFAULT_NAMES: Record<HoldingKind, string> = { bank: "Bank Account", cash:
 export async function getHoldings(userId: string): Promise<Holdings> {
   await connectDB();
   const [accounts, balances] = await Promise.all([
-    Account.find({ userId: oid(userId) }).sort({ isDefault: -1, createdAt: 1 }).lean(),
+    // Same order as the forms (lookups), so a box and the form's choice mean the same account.
+    Account.find({ userId: oid(userId) }).sort({ isDefault: -1, name: 1 }).lean(),
     getAccountBalances(userId),
   ]);
   const bal = (id: string) => balances.get(id) ?? 0;

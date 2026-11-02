@@ -86,6 +86,7 @@ async function QuickAddLoader() {
       persons={lookups.persons.filter((p) => !p.archived)}
       lastCategoryId={doc?.prefs?.lastCategoryId?.toString() ?? null}
       lastPaymentMethod={doc?.prefs?.lastPaymentMethod ?? "cash"}
+      accounts={lookups.accounts}
     />
   );
 }

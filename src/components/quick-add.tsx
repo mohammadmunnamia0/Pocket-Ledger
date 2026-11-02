@@ -11,8 +11,8 @@ import { useAction } from "@/components/use-action";
 import { HelpButton } from "@/components/help";
 import { createTransactionAction } from "@/app/actions/ledger";
 import { newSaveId, offlineCreate, saveWithFallback } from "@/lib/offline/hooks";
-import { PAYMENT_METHODS, type PaymentMethod } from "@/lib/constants";
-import { PAYMENT_METHOD_LABELS } from "@/lib/labels";
+import { HOLDING_KINDS, type HoldingKind, type PaymentMethod } from "@/lib/constants";
+import { LocationPicker, holdingAccountId, methodFor, type PickerAccount } from "@/components/location-picker";
 import { todayISO } from "@/lib/dates";
 
 /**
@@ -24,11 +24,13 @@ export function QuickAdd({
   persons,
   lastCategoryId,
   lastPaymentMethod,
+  accounts,
 }: {
   categories: CategoryChoice[];
   persons: { id: string; name: string }[];
   lastCategoryId: string | null;
   lastPaymentMethod: PaymentMethod;
+  accounts: PickerAccount[];
 }) {
   const [open, setOpen] = useState(false);
   const [more, setMore] = useState(false);
@@ -37,7 +39,8 @@ export function QuickAdd({
   const [categoryId, setCategoryId] = useState(lastCategoryId ?? "");
   const [date, setDate] = useState("");
   const [notes, setNotes] = useState("");
-  const [method, setMethod] = useState<PaymentMethod>(lastPaymentMethod);
+  // Bank / Cash / Mobile Banking — starts at the place used last time.
+  const [place, setPlace] = useState<HoldingKind>((HOLDING_KINDS as readonly string[]).includes(lastPaymentMethod) ? (lastPaymentMethod as HoldingKind) : "cash");
   const [status, setStatus] = useState<"paid" | "pending">("paid");
   const [personId, setPersonId] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -60,7 +63,8 @@ export function QuickAdd({
           date,
           categoryId: categoryId || undefined,
           notes,
-          paymentMethod: method,
+          paymentMethod: methodFor(place),
+          accountId: holdingAccountId(accounts, place),
           status,
           personId: personId || undefined,
         };
@@ -107,6 +111,7 @@ export function QuickAdd({
               <Input id="qa-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
             </Field>
           </div>
+          <LocationPicker id="qa-place" label="Paid from" value={place} onChange={setPlace} accounts={accounts} />
           <Field label="Category" htmlFor="qa-category">
             <NativeSelect id="qa-category" value={categoryId} onChange={(e) => setCategoryId(e.target.value)}>
               <option value="">Others</option>
@@ -128,15 +133,6 @@ export function QuickAdd({
           </button>
           {more && (
             <div className="grid grid-cols-2 gap-3">
-              <Field label="Payment method" htmlFor="qa-method">
-                <NativeSelect id="qa-method" value={method} onChange={(e) => setMethod(e.target.value as PaymentMethod)}>
-                  {PAYMENT_METHODS.map((m) => (
-                    <option key={m} value={m}>
-                      {PAYMENT_METHOD_LABELS[m]}
-                    </option>
-                  ))}
-                </NativeSelect>
-              </Field>
               <Field label="Status" htmlFor="qa-status">
                 <NativeSelect id="qa-status" value={status} onChange={(e) => setStatus(e.target.value as "paid" | "pending")}>
                   <option value="paid">Paid</option>

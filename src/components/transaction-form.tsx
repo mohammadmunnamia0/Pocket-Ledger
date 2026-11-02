@@ -10,8 +10,9 @@ import { Switch } from "@/components/ui/switch";
 import { CategoryOptions, Field, NativeSelect, type CategoryChoice } from "@/components/form-controls";
 import { useAction } from "@/components/use-action";
 import { createTransactionAction, updateTransactionAction } from "@/app/actions/ledger";
-import { BILL_TYPES, INCOME_KINDS, PAYMENT_METHODS, type BillType, type IncomeKind, type PaymentMethod } from "@/lib/constants";
-import { BILL_TYPE_LABELS, INCOME_KIND_LABELS, PAYMENT_METHOD_LABELS } from "@/lib/labels";
+import { BILL_TYPES, INCOME_KINDS, type BillType, type HoldingKind, type IncomeKind, type PaymentMethod } from "@/lib/constants";
+import { BILL_TYPE_LABELS, INCOME_KIND_LABELS } from "@/lib/labels";
+import { LocationPicker, holdingAccountId, holdingKindOf, methodFor } from "@/components/location-picker";
 import { formatTaka, parseTaka, toInputValue } from "@/lib/money";
 import { formatDate, formatMonthLong } from "@/lib/dates";
 import type { TxnDTO } from "@/lib/services/transactions";
@@ -21,7 +22,7 @@ import { newSaveId, offlineCreate, offlineUpdate, saveWithFallback, savedOnDevic
 
 export interface FormLookups {
   categories: CategoryChoice[];
-  accounts: { id: string; name: string; archived: boolean; isDefault: boolean }[];
+  accounts: { id: string; name: string; kind: string; archived: boolean; isDefault: boolean }[];
   persons: { id: string; name: string; archived: boolean }[];
   incomes?: { id: string; label: string; date: string; amount: number }[];
 }
@@ -75,8 +76,13 @@ export function TransactionForm({
   const [date, setDate] = useState(initial?.date ?? defaults.date);
   const [categoryId, setCategoryId] = useState(initial?.categoryId ?? defaults.categoryId ?? "");
   const [status, setStatus] = useState<"paid" | "pending">(initial?.status ?? "paid");
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(initial?.paymentMethod ?? defaults.paymentMethod ?? "cash");
+  const [paymentMethod] = useState<PaymentMethod>(initial?.paymentMethod ?? defaults.paymentMethod ?? "cash");
   const [accountId, setAccountId] = useState(initial?.accountId ?? defaultAccount);
+  // Bank / Cash / Mobile Banking: where an expense is paid from or income is kept. Null only
+  // when editing an entry on some other kind of account (it then stays on that account).
+  const [place, setPlace] = useState<HoldingKind | null>(() =>
+    initial ? holdingKindOf(lookups.accounts, initial.accountId) : (holdingKindOf(lookups.accounts, defaultAccount) ?? "cash"),
+  );
   const [toAccountId, setToAccountId] = useState(initial?.toAccountId ?? "");
   const [personId, setPersonId] = useState(initial?.personId ?? "");
   const [notes, setNotes] = useState(initial?.notes ?? "");
@@ -116,8 +122,9 @@ export function TransactionForm({
       amount: mode === "expense" && useBreakdown ? undefined : amount,
       date,
       attributionMonth: attributionMonth || undefined,
-      paymentMethod,
-      accountId: accountId || undefined,
+      // The chosen place decides the account (and so which balance changes).
+      paymentMethod: mode !== "transfer" && place ? methodFor(place) : paymentMethod,
+      accountId: (mode !== "transfer" && place ? holdingAccountId(lookups.accounts, place) : accountId) || undefined,
       notes,
     };
     if (mode === "expense") {
@@ -332,24 +339,18 @@ export function TransactionForm({
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-          <Field label="Payment method" htmlFor="method">
-            <NativeSelect id="method" value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}>
-              {PAYMENT_METHODS.map((m) => (
-                <option key={m} value={m}>
-                  {PAYMENT_METHOD_LABELS[m]}
-                </option>
-              ))}
-            </NativeSelect>
-          </Field>
-          <Field label={mode === "income" ? "Received into" : "Paid from"} htmlFor="account">
-            <NativeSelect id="account" value={accountId} onChange={(e) => setAccountId(e.target.value)}>
-              {accounts.map((a) => (
-                <option key={a.id} value={a.id}>
-                  {a.name}
-                </option>
-              ))}
-            </NativeSelect>
-          </Field>
+          <div className="sm:col-span-2">
+            <LocationPicker
+              id="place"
+              label={mode === "income" ? "Keep this money in" : "Paid from"}
+              value={place}
+              onChange={setPlace}
+              accounts={lookups.accounts}
+            />
+            {!place && initial?.accountName && (
+              <p className="mt-1 text-xs text-muted-foreground">Currently on “{initial.accountName}”. Pick a place to move it there.</p>
+            )}
+          </div>
           <Field
             label={mode === "income" ? "Salary month" : "Belongs to month"}
             htmlFor="month"

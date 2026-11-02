@@ -445,7 +445,9 @@ function DetailView({ txns, go, id, today }: ViewCtx & { id: string }) {
     [t.status === "pending" ? "Due date" : "Date", formatDate(t.date)],
     ["Belongs to month", formatMonthLong(t.attributionMonth)],
     ...(t.categoryLabel ? ([["Category", t.categoryLabel]] as [string, ReactNode][]) : []),
-    ...(t.type !== "transfer" ? ([["Payment method", PAYMENT_METHOD_LABELS[t.paymentMethod]]] as [string, ReactNode][]) : []),
+    ...(t.type !== "transfer"
+      ? ([[IN_TYPES.includes(t.type) ? "Kept in" : "Paid from", t.accountName ?? PAYMENT_METHOD_LABELS[t.paymentMethod]]] as [string, ReactNode][])
+      : []),
     ...(t.personName ? ([["Person", t.personName]] as [string, ReactNode][]) : []),
     ...(t.notes ? ([["Notes", <span key="n" className="whitespace-pre-wrap">{t.notes}</span>]] as [string, ReactNode][]) : []),
   ];

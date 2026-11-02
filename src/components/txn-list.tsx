@@ -14,6 +14,12 @@ export function txnSign(t: Pick<TxnDTO, "type">): 1 | -1 | 0 {
   return 0;
 }
 
+/** Where the money came from / went to: "from Cash", "into Bank Account" (transfers show both ends elsewhere). */
+export function placeLabel(t: Pick<TxnDTO, "type" | "accountName">): string | null {
+  if (t.type === "transfer" || !t.accountName) return null;
+  return `${IN_TYPES.includes(t.type) ? "into" : "from"} ${t.accountName}`;
+}
+
 export function TxnIcon({ type, className }: { type: TxnDTO["type"]; className?: string }) {
   const Icon =
     type === "income" ? ArrowDownLeft : type === "transfer" ? ArrowLeftRight : type.startsWith("savings") ? PiggyBank : type.startsWith("loan_") ? HandCoins : type.startsWith("invest_") ? TrendingUp : ArrowUpRight;
@@ -54,7 +60,7 @@ export function TxnList({ items, showDate = true }: { items: TxnDTO[]; showDate?
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{t.incomeLabel || t.title}</p>
               <p className="truncate text-xs text-muted-foreground">
-                {[showDate ? formatDate(t.date) : null, t.categoryLabel ?? TXN_TYPE_LABELS[t.type], t.items.length ? `${t.items.length} items` : null]
+                {[showDate ? formatDate(t.date) : null, t.categoryLabel ?? TXN_TYPE_LABELS[t.type], placeLabel(t), t.items.length ? `${t.items.length} items` : null]
                   .filter(Boolean)
                   .join(" · ")}
               </p>

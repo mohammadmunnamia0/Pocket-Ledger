@@ -6,7 +6,7 @@ import { ButtonLink } from "@/components/button-link";
 import { EmptyState, PageHeader, StatusBadge, TableSkeleton } from "@/components/common";
 import { Money } from "@/components/money";
 import { TransactionFilters } from "@/components/transaction-filters";
-import { TxnAmount, TxnIcon } from "@/components/txn-list";
+import { TxnAmount, TxnIcon, placeLabel } from "@/components/txn-list";
 import { DeleteTxnButton, MarkPaidButton } from "@/components/txn-actions";
 import { requireUser } from "@/lib/auth/session";
 import { getLookups } from "@/lib/services/lookups";
@@ -108,7 +108,7 @@ async function TransactionsView({ searchParams }: { searchParams: Promise<SP> })
                   <th className="px-3 py-2.5 font-medium">Category</th>
                   <th className="px-3 py-2.5 font-medium">Type</th>
                   <th className="px-3 py-2.5 text-right font-medium">Amount</th>
-                  <th className="px-3 py-2.5 font-medium">Method</th>
+                  <th className="px-3 py-2.5 font-medium">From / into</th>
                   <th className="px-3 py-2.5 font-medium">Status</th>
                   {showBalance && <th className="px-3 py-2.5 text-right font-medium">Balance</th>}
                   <th className="px-3 py-2.5 text-right font-medium">
@@ -135,7 +135,7 @@ async function TransactionsView({ searchParams }: { searchParams: Promise<SP> })
                     <td className="px-3 py-2.5 text-right">
                       <TxnAmount t={t} />
                     </td>
-                    <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">{PAYMENT_METHOD_LABELS[t.paymentMethod]}</td>
+                    <td className="px-3 py-2.5 whitespace-nowrap text-muted-foreground">{t.type === "transfer" ? "—" : (t.accountName ?? PAYMENT_METHOD_LABELS[t.paymentMethod])}</td>
                     <td className="px-3 py-2.5">
                       <StatusBadge status={t.status} />
                     </td>
@@ -174,7 +174,7 @@ async function TransactionsView({ searchParams }: { searchParams: Promise<SP> })
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-medium">{t.incomeLabel || t.title}</p>
                     <p className="truncate text-xs text-muted-foreground">
-                      {formatDate(t.date)} · {t.categoryLabel ?? TXN_TYPE_LABELS[t.type]}
+                      {[formatDate(t.date), t.categoryLabel ?? TXN_TYPE_LABELS[t.type], placeLabel(t)].filter(Boolean).join(" · ")}
                     </p>
                   </div>
                   <div className="flex flex-col items-end gap-0.5">

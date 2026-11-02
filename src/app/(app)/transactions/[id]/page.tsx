@@ -47,8 +47,8 @@ async function Detail({ params }: { params: Promise<{ id: string }> }) {
   ];
   if (t.categoryLabel) rows.push(["Category", t.categoryLabel]);
   if (t.type === "transfer") rows.push(["Accounts", `${t.accountName ?? "—"} → ${t.toAccountName ?? "—"}`]);
-  else if (t.accountName) rows.push([t.type === "income" ? "Received into" : "Account", t.accountName]);
-  if (t.type !== "transfer") rows.push(["Payment method", PAYMENT_METHOD_LABELS[t.paymentMethod]]);
+  else if (t.accountName) rows.push([IN_TYPES.includes(t.type) ? "Kept in" : "Paid from", t.accountName]);
+  else rows.push(["Payment method", PAYMENT_METHOD_LABELS[t.paymentMethod]]);
   if (t.personName) rows.push(["Person", <Link key="p" href={`/people/${t.personId}`} className="hover:underline">{t.personName}</Link>]);
   if (t.goalName) rows.push(["Savings goal", <Link key="g" href={`/savings/${t.goalId}`} className="hover:underline">{t.goalName}</Link>]);
   if (t.bill) {

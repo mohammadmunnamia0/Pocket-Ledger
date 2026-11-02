@@ -249,3 +249,37 @@ describe("investments", () => {
     await expectIntegrity();
   });
 });
+
+describe("Remaining balance distribution (Bank / Cash / Mobile Banking)", () => {
+  it("13,350 → 10,000 / 3,000 / 350; ৳500 from Cash; ৳5,000 kept in Mobile; salary & carry-forward unchanged", async () => {
+    await salary(13350, "2026-10-01");
+    const cyclesBefore = await getSalaryCycles(userId);
+    await setHoldings(userId, {
+      date: "2026-10-02",
+      holdings: [
+        { kind: "bank", amount: "10000" },
+        { kind: "cash", amount: "3000" },
+        { kind: "mobile", amount: "350" },
+      ],
+    });
+    // The split only moves money between the three places.
+    expect((await getSalaryCycles(userId)).map((c) => [c.totalAvailable, c.totalSpent, c.remainingAtEnd])).toEqual(
+      cyclesBefore.map((c) => [c.totalAvailable, c.totalSpent, c.remainingAtEnd]),
+    );
+
+    // An expense paid from Cash comes out of Cash only.
+    await createTransaction(userId, { type: "expense", title: "Lunch", amount: "500", date: "2026-10-03", paymentMethod: "cash", accountId: acct.cash });
+    expect([await holding("bank"), await holding("cash"), await holding("mobile")]).toEqual([tk(10000), tk(2500), tk(350)]);
+    expect(await spendable()).toBe(tk(12850));
+
+    // Money added and kept in Mobile Banking goes to Mobile Banking only.
+    await createTransaction(userId, { type: "income", title: "Freelance", amount: "5000", date: "2026-10-04", incomeKind: "other", paymentMethod: "mobile", accountId: acct.mobile });
+    expect([await holding("bank"), await holding("cash"), await holding("mobile")]).toEqual([tk(10000), tk(2500), tk(5350)]);
+    const h = await getHoldings(userId);
+    expect(h.total).toBe(await spendable()); // Bank + Cash + Mobile = Remaining balance
+    expect(h.total).toBe(tk(17850));
+    const [cycle] = await getSalaryCycles(userId);
+    expect([cycle.otherIncome, cycle.totalSpent, cycle.remainingAtEnd]).toEqual([tk(5000), tk(500), tk(17850)]);
+    await expectIntegrity();
+  });
+});

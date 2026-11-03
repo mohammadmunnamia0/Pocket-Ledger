@@ -27,6 +27,10 @@ const ICONS = { shirt: Shirt, code: Code2, sparkles: Sparkles } as const;
 async function AccountCards() {
   const user = await requireUser();
   const [{ spendable }, businesses] = await Promise.all([getBalanceSummary(user.id, todayISO()), listBusinessCards(user.id)]);
+  // Alwin BD + ReturnHex: one extra line on both cards (each keeps its own balance and records).
+  const COMBINED = ["alwin-bd", "returnhex"];
+  const pair = businesses.filter((b) => COMBINED.includes(b.key));
+  const combined = pair.length === 2 && pair.every((b) => b.balance !== null) ? pair.reduce((s, b) => s + b.balance!, 0) : null;
   return (
     <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       <li>
@@ -66,6 +70,11 @@ async function AccountCards() {
               ) : (
                 <span className="text-3xl font-semibold tracking-tight">
                   <Money value={b.balance} tone="auto" />
+                </span>
+              )}
+              {combined !== null && COMBINED.includes(b.key) && (
+                <span className="text-xs text-muted-foreground">
+                  Combined Total Balance: <Money value={combined} tone="auto" className="font-medium text-foreground" />
                 </span>
               )}
               <OpenLabel text={b.balance === null ? "Set up" : "Open dashboard"} />

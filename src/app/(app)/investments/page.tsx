@@ -177,7 +177,7 @@ function InvestmentCard({ v, accounts, accountName }: { v: InvestmentView; accou
       <details className="mt-3 text-sm">
         <summary className="cursor-pointer text-xs text-muted-foreground">History ({v.entries.length})</summary>
         <ul className="mt-2 divide-y">
-          {v.entries.map((e) => (
+          {[...v.entries].reverse().map((e) => (
             <li key={e.id} className="flex items-center gap-2 py-1.5">
               <span className="w-20 shrink-0 text-xs text-muted-foreground">{formatDate(e.date)}</span>
               <span className="min-w-0 flex-1 truncate">

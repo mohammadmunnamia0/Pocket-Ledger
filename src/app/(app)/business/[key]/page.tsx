@@ -139,7 +139,7 @@ async function BusinessView({ params, searchParams }: { params: Promise<{ key: s
         <Section
           title="Transaction history"
           description={
-            filtered ? `${filter.label} — balances are the real balance after each transaction.` : "Oldest first, with the balance after each transaction."
+            filtered ? `${filter.label} — balances are the real balance after each transaction.` : "Newest first, with the balance after each transaction."
           }
           actions={
             <Suspense fallback={null}>
@@ -245,24 +245,14 @@ function HistoryTable({
       {t.note && <span className="block text-xs text-muted-foreground">{t.note}</span>}
     </>
   );
+  // Newest first; the balances were worked out oldest → newest, so each row still shows the
+  // real balance right after it. The opening balance is the oldest line, at the bottom.
+  const newestFirst = [...rows].reverse();
   return (
     <>
       {/* Phones: one card per transaction. */}
       <ul className="divide-y text-sm sm:hidden">
-        {opening && (
-          <li className="flex items-start justify-between gap-3 py-2.5" data-row="opening">
-            <span className="min-w-0">
-              <span className="font-medium">Opening balance</span>
-              <span className="block text-xs text-muted-foreground">{formatDate(opening.date)} · not income</span>
-            </span>
-            <span className="text-right tabular">
-              <span className="block font-medium" data-balance>
-                {formatTaka(opening.amount)}
-              </span>
-            </span>
-          </li>
-        )}
-        {rows.map((t) => {
+        {newestFirst.map((t) => {
           const isIn = directionOf(t.kind) === "in";
           return (
             <li key={t.id} className="flex items-start gap-2 py-2.5" data-row={t.title}>
@@ -287,6 +277,19 @@ function HistoryTable({
             </li>
           );
         })}
+        {opening && (
+          <li className="flex items-start justify-between gap-3 py-2.5" data-row="opening">
+            <span className="min-w-0">
+              <span className="font-medium">Opening balance</span>
+              <span className="block text-xs text-muted-foreground">{formatDate(opening.date)} · not income</span>
+            </span>
+            <span className="text-right tabular">
+              <span className="block font-medium" data-balance>
+                {formatTaka(opening.amount)}
+              </span>
+            </span>
+          </li>
+        )}
       </ul>
       <div className="-mx-1 hidden overflow-x-auto px-1 sm:block">
         <table className="w-full min-w-[34rem] text-sm">
@@ -300,21 +303,7 @@ function HistoryTable({
             </tr>
           </thead>
           <tbody className="tabular">
-            {opening && (
-              <tr className="border-t bg-muted/30">
-                <td className="py-2 pr-2 whitespace-nowrap">{formatDate(opening.date)}</td>
-                <td className="py-2 pr-2">
-                  <span className="font-medium">Opening balance</span>
-                  <span className="block text-xs text-muted-foreground">Money available when the records start — not income</span>
-                </td>
-                <td className="py-2 text-right">{formatTaka(opening.amount)}</td>
-                <td className="py-2 text-right font-medium" data-balance>
-                  {formatTaka(opening.amount)}
-                </td>
-                <td />
-              </tr>
-            )}
-            {rows.map((t) => {
+            {newestFirst.map((t) => {
               const isIn = directionOf(t.kind) === "in";
               return (
                 <tr key={t.id} className="border-t align-top">
@@ -334,6 +323,20 @@ function HistoryTable({
                 </tr>
               );
             })}
+            {opening && (
+              <tr className="border-t bg-muted/30">
+                <td className="py-2 pr-2 whitespace-nowrap">{formatDate(opening.date)}</td>
+                <td className="py-2 pr-2">
+                  <span className="font-medium">Opening balance</span>
+                  <span className="block text-xs text-muted-foreground">Money available when the records start — not income</span>
+                </td>
+                <td className="py-2 text-right">{formatTaka(opening.amount)}</td>
+                <td className="py-2 text-right font-medium" data-balance>
+                  {formatTaka(opening.amount)}
+                </td>
+                <td />
+              </tr>
+            )}
           </tbody>
         </table>
       </div>

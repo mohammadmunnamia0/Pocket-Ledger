@@ -49,6 +49,24 @@ export const NAV_ITEMS = [
   { href: "/settings", label: "Settings", icon: Settings, help: "settings" },
 ] as const satisfies readonly { href: string; label: string; icon: unknown; help: HelpKey }[];
 
+type NavItem = (typeof NAV_ITEMS)[number];
+const isBusinessHref = (href: string) => href.startsWith("/business/");
+
+/**
+ * The sidebar shows only the menus of the account you are in, judged from the page:
+ * the landing page → just "All accounts"; a business page → that business only;
+ * any other page → the Personal Finance menus. Nothing is removed — only shown in context.
+ */
+export function navItemsFor(pathname: string | null): NavItem[] {
+  const home = NAV_ITEMS.filter((i) => i.href === "/");
+  if (!pathname || pathname === "/") return home;
+  if (pathname.startsWith("/business/")) {
+    const key = pathname.split("/")[2];
+    return [...home, ...NAV_ITEMS.filter((i) => i.href === `/business/${key}`)];
+  }
+  return [...home, ...NAV_ITEMS.filter((i) => i.href !== "/" && !isBusinessHref(i.href))];
+}
+
 function isActive(pathname: string | null, href: string) {
   if (!pathname) return false;
   return href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`);
@@ -58,7 +76,7 @@ function isActive(pathname: string | null, href: string) {
 export function NavList({ active, onNavigate }: { active: string | null; onNavigate?: () => void }) {
   return (
     <nav aria-label="Main" className="grid gap-0.5">
-      {NAV_ITEMS.map(({ href, label, icon: Icon, help }) => {
+      {navItemsFor(active).map(({ href, label, icon: Icon, help }) => {
         const on = isActive(active, href);
         return (
           <div key={href} className="group/nav flex items-center gap-0.5">

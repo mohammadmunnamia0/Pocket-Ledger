@@ -73,7 +73,7 @@ export function InvestmentDialog({ trigger, investment, accounts }: { trigger: R
               </NativeSelect>
             </Field>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Amount (৳)" htmlFor="inv-amount" error={errors.amount}>
               <Input id="inv-amount" value={f.amount} onChange={(e) => set({ amount: e.target.value })} inputMode="decimal" required className="tabular text-base" />
             </Field>
@@ -155,7 +155,7 @@ export function ReturnDialog({ trigger, investment, accounts }: { trigger: React
               <Input id="ret-profit" value={profit} onChange={(e) => setProfit(e.target.value)} inputMode="decimal" className="tabular text-base" />
             </Field>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Date" htmlFor="ret-date" error={errors.date}>
               <Input id="ret-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
             </Field>

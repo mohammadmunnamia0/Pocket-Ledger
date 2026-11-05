@@ -7,7 +7,7 @@ import { Money } from "@/components/money";
 import { TxnList } from "@/components/txn-list";
 import { HelpButton } from "@/components/help";
 import { HoldingsStrip } from "@/components/holdings-card";
-import { SalaryRevealCard } from "@/components/salary-reveal";
+import { RevealCard } from "@/components/reveal-card";
 import { CategoryBarChart, DailySpendChart, IncomeExpenseChart } from "@/components/charts";
 import { requireUser } from "@/lib/auth/session";
 import { getDashboard, type DashboardData } from "@/lib/services/dashboard";
@@ -81,11 +81,11 @@ async function Dashboard() {
               href="/transactions"
               label="= Remaining balance"
               value={p.remaining}
-              hint={`${formatTaka(p.totalAvailable)} available − ${formatTaka(p.spends)} spent`}
+              hint={`${formatTaka(p.totalAvailable)} available − ${formatTaka(p.spends)} spent · lending & borrowing not included`}
             />
             {/* Right under Remaining balance on phones; a full-width row below the sum on desktop. */}
             <div className="col-span-2 lg:order-6 lg:col-span-5">
-              <HoldingsStrip holdings={d.holdings} remaining={p.remaining} />
+              <HoldingsStrip holdings={d.holdings} remaining={p.remaining} owed={d.owed.outstanding} lent={d.lent.outstanding} />
             </div>
             <OverviewCard
               className="lg:order-1"
@@ -94,7 +94,7 @@ async function Dashboard() {
               value={p.carriedIn}
               hint={carriedFrom}
             />
-            <SalaryRevealCard
+            <RevealCard
               className="lg:order-2"
               href={`/income/${p.salaryId}`}
               label="+ Latest salary"
@@ -108,7 +108,7 @@ async function Dashboard() {
               value={p.totalAvailable}
               hint={
                 (p.otherIncome ? "Carryforward + salary + other income" : "Carryforward + latest salary") +
-                (p.otherInflows ? ` + ${formatTaka(p.otherInflows)} borrowed / repaid to you / capital back (not income)` : "")
+                (p.otherInflows ? ` + ${formatTaka(p.otherInflows)} investment capital back (not income)` : "")
               }
             />
             <OverviewCard
@@ -116,25 +116,29 @@ async function Dashboard() {
               href={`/transactions?flow=out&status=paid&from=${p.receivedOn}`}
               label="− Spends this period"
               value={p.spends}
-              hint={`${p.paymentCount} payment${p.paymentCount === 1 ? "" : "s"} since ${formatDate(p.receivedOn)}${p.savedOrInvested ? ` · incl. ${formatTaka(p.savedOrInvested)} saved & invested` : ""}${p.lentOrRepaid ? ` · incl. ${formatTaka(p.lentOrRepaid)} lent or repaid (not spending)` : ""}`}
+              hint={`${p.paymentCount} payment${p.paymentCount === 1 ? "" : "s"} since ${formatDate(p.receivedOn)}${p.savedOrInvested ? ` · incl. ${formatTaka(p.savedOrInvested)} saved & invested` : ""}`}
             />
           </div>
         )}
       </section>
 
       <section aria-labelledby="commitments-title">
-        <h2 id="commitments-title" className="mb-3 text-sm font-semibold">
-          Savings &amp; commitments
+        <h2 id="commitments-title" className="text-sm font-semibold">
+          Loans, savings &amp; investments
         </h2>
-        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-          <OverviewCard
+        <p className="mb-3 text-xs text-muted-foreground">Kept separate — none of these are part of the Remaining balance or of income and expenses.</p>
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
+          <LoanTotalCard direction="lent" summary={d.lent} />
+          <LoanTotalCard direction="borrowed" summary={d.owed} />
+          <RevealCard
             href="/savings"
-            label="In savings"
-            value={m.inSavings}
-            hint={`Savings goals ${formatTaka(m.savingsGoals)} · Invested ${formatTaka(m.invested)}`}
+            label="Savings"
+            value={m.savingsGoals}
+            hint={`In ${d.goals.length} active savings goal${d.goals.length === 1 ? "" : "s"} — not in Remaining balance`}
           />
-          <LoansCard lent={d.lent} owed={d.owed} className="col-span-2 lg:col-span-1" />
+          <RevealCard href="/investments" label="Investment" value={m.invested} hint="Invested and not yet returned — not in Remaining balance" />
           <OverviewCard
+            className="col-span-2 lg:col-span-1"
             href="/transactions?status=pending"
             label="Pending payments"
             value={m.pendingTotal}
@@ -310,31 +314,25 @@ function OverviewCard({
   );
 }
 
-/** Lending & Borrowing at a glance: what others owe you and what you owe. */
-function LoansCard({ lent, owed, className }: { lent: DashboardData["lent"]; owed: DashboardData["owed"]; className?: string }) {
-  const none = lent.total === 0 && owed.total === 0;
+/** Always shown: what others still owe you (receivable) or what you still owe (payable). Never part of the Remaining balance. */
+function LoanTotalCard({ direction, summary: s, className }: { direction: "lent" | "borrowed"; summary: DashboardData["lent"]; className?: string }) {
+  const lent = direction === "lent";
+  const people = s.byPerson.slice(0, 2).map((p) => p.person).join(", ");
+  const hint =
+    s.total === 0
+      ? lent
+        ? "No money lent yet"
+        : "No money borrowed yet"
+      : `${lent ? "Lent" : "Borrowed"} ${formatTaka(s.total)} · repaid ${formatTaka(s.repaid)} · ${people || "all repaid"}`;
   return (
-    <Link href="/loans" className={cn("group flex flex-col rounded-xl border bg-card p-4 transition-colors hover:border-foreground/20", className)}>
-      <span className="flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground">
-        Lent &amp; borrowed
-        <ChevronRight className="size-3.5 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
+    <Link href="/loans" className={cn("group flex min-w-0 flex-col rounded-xl border bg-card p-4 transition-colors hover:border-foreground/20", className)}>
+      <span className="flex items-start justify-between gap-2 text-xs font-medium text-muted-foreground">
+        {lent ? "Total Money Lent (Receivable)" : "Total Money Borrowed (Payable)"}
+        <ChevronRight className="size-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
       </span>
-      {none ? (
-        <span className="mt-2 text-xs text-muted-foreground">No loans yet. Record money you lend or borrow in Lending &amp; Borrowing.</span>
-      ) : (
-        <dl className="mt-1 grid grid-cols-2 gap-2 text-xs">
-          <div>
-            <dt className="text-muted-foreground">Owed to you</dt>
-            <dd className="text-xl font-semibold tracking-tight tabular">{formatTaka(lent.outstanding)}</dd>
-            <dd className="text-muted-foreground">{lent.byPerson.length ? lent.byPerson.slice(0, 2).map((p) => p.person).join(", ") : "all repaid"}</dd>
-          </div>
-          <div>
-            <dt className="text-muted-foreground">You owe</dt>
-            <dd className="text-xl font-semibold tracking-tight tabular">{formatTaka(owed.outstanding)}</dd>
-            <dd className="text-muted-foreground">{owed.byPerson.length ? owed.byPerson.slice(0, 2).map((p) => p.person).join(", ") : "nothing owed"}</dd>
-          </div>
-        </dl>
-      )}
+      <span className="mt-1 text-xl font-semibold tracking-tight tabular">{formatTaka(s.outstanding)}</span>
+      <span className="text-xs text-muted-foreground">{lent ? "Others owe you" : "You owe others"}</span>
+      <span className="mt-1 text-xs text-muted-foreground">{hint}</span>
     </Link>
   );
 }

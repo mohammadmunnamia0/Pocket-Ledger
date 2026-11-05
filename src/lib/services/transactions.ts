@@ -7,6 +7,8 @@ import {
   IN_TYPES,
   LINKED_TYPES,
   OUT_TYPES,
+  SPENDABLE_IN_TYPES,
+  SPENDABLE_OUT_TYPES,
   Investment,
   Loan,
   Person,
@@ -412,15 +414,15 @@ export interface TxnFilters {
   pageSize?: number;
 }
 
-/** Signed effect of a transaction on the spendable balance (MongoDB expression). */
+/** Signed effect of a transaction on the spendable balance (MongoDB expression). Loans: always 0. */
 export const SPENDABLE_DELTA_EXPR = {
   $cond: [
     { $eq: ["$status", "paid"] },
     {
       $switch: {
         branches: [
-          { case: { $in: ["$type", IN_TYPES] }, then: "$amount" },
-          { case: { $in: ["$type", OUT_TYPES] }, then: { $multiply: ["$amount", -1] } },
+          { case: { $in: ["$type", SPENDABLE_IN_TYPES] }, then: "$amount" },
+          { case: { $in: ["$type", SPENDABLE_OUT_TYPES] }, then: { $multiply: ["$amount", -1] } },
         ],
         default: 0,
       },
@@ -487,13 +489,13 @@ export async function listTransactions(userId: string, filters: TxnFilters, look
         rows: [{ $skip: (page - 1) * pageSize }, { $limit: pageSize }, { $project: { _delta: 0 } }],
         total: [{ $count: "n" }],
         // Totals for the whole filtered list (not just this page), so a filtered view always
-        // explains its own numbers.
+        // explains its own numbers. Like the balance, they leave out lending and borrowing.
         sums: [
           {
             $group: {
               _id: null,
-              moneyIn: { $sum: { $cond: [{ $and: [{ $eq: ["$status", "paid"] }, { $in: ["$type", IN_TYPES] }] }, "$amount", 0] } },
-              moneyOut: { $sum: { $cond: [{ $and: [{ $eq: ["$status", "paid"] }, { $in: ["$type", OUT_TYPES] }] }, "$amount", 0] } },
+              moneyIn: { $sum: { $cond: [{ $and: [{ $eq: ["$status", "paid"] }, { $in: ["$type", SPENDABLE_IN_TYPES] }] }, "$amount", 0] } },
+              moneyOut: { $sum: { $cond: [{ $and: [{ $eq: ["$status", "paid"] }, { $in: ["$type", SPENDABLE_OUT_TYPES] }] }, "$amount", 0] } },
               pending: { $sum: { $cond: [{ $eq: ["$status", "pending"] }, "$amount", 0] } },
               pendingCount: { $sum: { $cond: [{ $eq: ["$status", "pending"] }, 1, 0] } },
             },

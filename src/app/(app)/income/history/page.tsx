@@ -63,7 +63,7 @@ async function History() {
             {/* The period as one sum */}
             <dl className="grid grid-cols-2 gap-x-4 gap-y-3 px-4 py-3 text-sm sm:grid-cols-5">
               <Fig label="Carried in" value={p.carriedIn} hint={p.carriedFrom.length ? `from ${p.carriedFrom.map((c) => `${c.label} (${formatTaka(c.amount)})`).join(", ")}` : "nothing left from before"} />
-              <Fig label="+ Salary received" value={p.startingAmount} hint={[p.otherIncome ? `+ ${formatTaka(p.otherIncome)} other income` : "", p.otherInflows ? `+ ${formatTaka(p.otherInflows)} borrowed / repaid to you (not income)` : ""].filter(Boolean).join(" · ") || undefined} />
+              <Fig label="+ Salary received" value={p.startingAmount} hint={[p.otherIncome ? `+ ${formatTaka(p.otherIncome)} other income` : "", p.otherInflows ? `+ ${formatTaka(p.otherInflows)} investment capital back (not income)` : ""].filter(Boolean).join(" · ") || undefined} />
               <Fig label="= Total available" value={p.totalAvailable} />
               <Fig label="− Spent in period" value={p.totalSpent} hint={`${p.expenseCount} payment${p.expenseCount === 1 ? "" : "s"}`} />
               <Fig

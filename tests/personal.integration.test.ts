@@ -114,7 +114,7 @@ describe("lending", () => {
     expect([loan.principal, loan.repaid, loan.outstanding, loan.status]).toEqual([tk(5000), 0, tk(5000), "outstanding"]);
     expect(loan.overdue).toBe(true); // due 20 Oct, nothing repaid by 31 Dec
     expect(await holding("cash")).toBe(tk(15000)); // cash went down
-    expect(await spendable()).toBe(tk(15000));
+    expect(await spendable()).toBe(tk(20000)); // lending is never deducted from the remaining balance
     let report = await getMonthReport(userId, "2026-10");
     expect(report.expenses).toBe(0); // lending is not an expense
 
@@ -126,7 +126,7 @@ describe("lending", () => {
     loan = (await getLoan(userId, id, TODAY))!;
     expect([loan.repaid, loan.outstanding, loan.status, loan.interest, loan.overdue]).toEqual([tk(5000), 0, "repaid", tk(200), false]);
     expect(await holding("mobile")).toBe(tk(3200));
-    expect(await spendable()).toBe(tk(20200));
+    expect(await spendable()).toBe(tk(20200)); // + interest only — repaid principal is never added
 
     report = await getMonthReport(userId, "2026-10");
     expect(report.totalIncome).toBe(tk(20200)); // salary + interest only — repaid principal is not income
@@ -150,7 +150,7 @@ describe("lending", () => {
     await saveLoan(userId, { direction: "lent", person: "Rahim K.", amount: "4000", date: "2026-10-10", accountId: acct.cash }, id);
     let loan = (await getLoan(userId, id, TODAY))!;
     expect([loan.person, loan.principal, loan.outstanding]).toEqual(["Rahim K.", tk(4000), tk(2000)]);
-    expect(await spendable()).toBe(tk(4000)); // 6,000 − 4,000 + 2,000
+    expect(await spendable()).toBe(tk(6000)); // lending and repayments leave the remaining balance alone
 
     const repayment = loan.entries.find((e) => e.role === "repayment")!;
     await deleteLoanEntry(userId, id, repayment.id);
@@ -173,38 +173,41 @@ describe("lending", () => {
 
 describe("borrowing", () => {
   it("Karim example: ৳10,000 borrowed into Bank — not salary or income — repaid in parts", async () => {
-    await salary(3000, "2026-10-01", acct.bank); // so Bank holds enough for the ৳12,000 laptop
+    await salary(3000, "2026-10-01", acct.bank);
     const id = await saveLoan(userId, { direction: "borrowed", person: "Karim", amount: "10000", date: "2026-10-12", dueDate: "2026-10-30", accountId: acct.bank, note: "Business Funding" });
-    expect(await holding("bank")).toBe(tk(13000)); // salary 3,000 + borrowed 10,000
-    expect(await spendable()).toBe(tk(13000));
+    expect(await holding("bank")).toBe(tk(13000)); // salary 3,000 + borrowed 10,000 — the money is really there
+    expect(await spendable()).toBe(tk(3000)); // but borrowed money is never added to the remaining balance
 
     const report = await getMonthReport(userId, "2026-10");
     expect(report.salary).toBe(tk(3000));
     expect(report.totalIncome).toBe(tk(3000)); // borrowed money is not income
+    expect([report.loansIn, report.totalAvailable]).toEqual([tk(10000), tk(3000)]); // shown, not counted
 
-    // The salary period shows it separately from salary and other income.
+    // The salary period doesn't count it either.
     const [cycle] = await getSalaryCycles(userId);
-    expect([cycle.otherIncome, cycle.otherInflows, cycle.totalAvailable]).toEqual([0, tk(10000), tk(13000)]);
+    expect([cycle.otherIncome, cycle.otherInflows, cycle.totalAvailable]).toEqual([0, 0, tk(3000)]);
 
-    // Borrowed money can pay for things (FIFO), and is still not income.
-    await expense("Laptop", 12000, "2026-10-14", acct.bank);
+    // Borrowed money can't fund spending: only your own money (FIFO) can.
+    await expect(expense("Laptop", 12000, "2026-10-14", acct.bank)).rejects.toThrow(/insufficient/i);
+    await expense("Laptop bag", 2000, "2026-10-14", acct.bank);
     expect(await spendable()).toBe(tk(1000));
 
-    await expect(recordLoanRepayment(userId, id, { amount: "4000", date: "2026-10-20", accountId: acct.cash })).rejects.toThrow(/insufficient|not enough/i);
+    // Repaying still needs the money to be in the chosen place, but is never deducted from the balance.
+    await expect(recordLoanRepayment(userId, id, { amount: "4000", date: "2026-10-20", accountId: acct.cash })).rejects.toThrow(/not enough/i);
     await createTransaction(userId, { type: "income", title: "Bonus", amount: "6000", date: "2026-10-19", incomeKind: "bonus", accountId: acct.cash });
     await recordLoanRepayment(userId, id, { amount: "4000", date: "2026-10-20", accountId: acct.cash });
-    let loan = (await getLoan(userId, id, TODAY))!;
+    const loan = (await getLoan(userId, id, TODAY))!;
     expect([loan.repaid, loan.outstanding, loan.status]).toEqual([tk(4000), tk(6000), "partial"]);
-    expect(await spendable()).toBe(tk(3000));
-
-    // Deleting the borrowed principal would leave the laptop unpaid-for → refused, nothing changes.
-    await expect(deleteLoan(userId, id)).rejects.toThrow(/insufficient|not enough/i);
-    loan = (await getLoan(userId, id, TODAY))!;
-    expect(loan.outstanding).toBe(tk(6000));
+    expect(await spendable()).toBe(tk(7000)); // 3,000 − 2,000 + 6,000; the 4,000 repayment isn't deducted
+    expect(await holding("cash")).toBe(tk(2000));
 
     const sum = summarizeLoans(await listLoans(userId, TODAY), "borrowed");
     expect([sum.total, sum.repaid, sum.outstanding]).toEqual([tk(10000), tk(4000), tk(6000)]);
     expect(sum.byPerson).toEqual([{ person: "Karim", outstanding: tk(6000), nextDue: "2026-10-30" }]);
+
+    // Nothing was funded by the loan, so deleting it leaves the remaining balance unchanged.
+    await deleteLoan(userId, id);
+    expect(await spendable()).toBe(tk(7000));
     await expectIntegrity();
   });
 });
@@ -302,11 +305,11 @@ describe("personal date filter statement", () => {
       const closing = opening + list.totals.moneyIn - list.totals.moneyOut;
       return { opening: opening / 100, in: list.totals.moneyIn / 100, out: list.totals.moneyOut / 100, closing: closing / 100, real: (await getBalanceSummary(userId, f.to!)).spendable / 100 };
     };
-    // Range 5–10 Oct: transfer not counted; lending counted as money out (not an expense).
-    expect(await statement({ period: "range", from: "2026-10-05", to: "2026-10-10" })).toEqual({ opening: 10000, in: 700, out: 1500, closing: 9200, real: 9200 });
-    expect(await statement({ period: "date", date: "2026-10-12" })).toEqual({ opening: 9200, in: 0, out: 300, closing: 8900, real: 8900 });
-    expect(await statement({ period: "week", date: "2026-10-08" })).toEqual({ opening: 10000, in: 700, out: 1500, closing: 9200, real: 9200 }); // Sat 3 – Fri 9
-    expect(await statement({ period: "month", month: "2026-10" })).toEqual({ opening: 0, in: 10700, out: 1800, closing: 8900, real: 8900 });
+    // Range 5–10 Oct: transfer and lending are both left out (neither is part of the balance).
+    expect(await statement({ period: "range", from: "2026-10-05", to: "2026-10-10" })).toEqual({ opening: 10000, in: 700, out: 500, closing: 10200, real: 10200 });
+    expect(await statement({ period: "date", date: "2026-10-12" })).toEqual({ opening: 10200, in: 0, out: 300, closing: 9900, real: 9900 });
+    expect(await statement({ period: "week", date: "2026-10-08" })).toEqual({ opening: 10000, in: 700, out: 500, closing: 10200, real: 10200 }); // Sat 3 – Fri 9
+    expect(await statement({ period: "month", month: "2026-10" })).toEqual({ opening: 0, in: 10700, out: 800, closing: 9900, real: 9900 });
   });
 });
 

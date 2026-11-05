@@ -274,17 +274,17 @@ function Card({ label, value, hint, highlight, onClick }: { label: string; value
   );
 }
 
-/** "+ Latest salary", blurred until the first tap (as online); the next tap opens salary history. */
-function SalaryCard({ value, hint, onOpen }: { value: number; hint: string; onOpen: () => void }) {
+/** A private amount ("+ Latest salary", Savings, Investment), blurred until the first tap (as online); the next tap opens it. */
+function RevealCard({ label, value, hint, onOpen }: { label: string; value: number; hint: string; onOpen: () => void }) {
   const [shown, setShown] = useState(false);
   return (
     <button
       type="button"
       onClick={() => (shown ? onOpen() : setShown(true))}
-      aria-label={shown ? undefined : "+ Latest salary: hidden. Tap to show the amount."}
-      className="flex flex-col rounded-xl border bg-card p-4 text-left hover:border-foreground/20"
+      aria-label={shown ? undefined : `${label}: hidden. Tap to show the amount.`}
+      className="flex min-w-0 flex-col rounded-xl border bg-card p-4 text-left hover:border-foreground/20"
     >
-      <span className="text-xs font-medium text-muted-foreground">+ Latest salary</span>
+      <span className="text-xs font-medium text-muted-foreground">{label}</span>
       <span className="mt-1 text-xl font-semibold tracking-tight tabular">
         {shown ? <span className="text-primary">{formatTaka(value)}</span> : <span className="pointer-events-none select-none blur-[6px]" aria-hidden>{formatTaka(value)}</span>}
       </span>
@@ -337,7 +337,7 @@ function HomeView({ snapshot, txns, today, go }: ViewCtx) {
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
             <Card highlight label="= Remaining balance" value={p.remaining} hint={`${formatTaka(p.totalAvailable)} available − ${formatTaka(p.spends)} spent`} onClick={() => go("/transactions")} />
             <Card label="Previous salary carryforward" value={p.carriedIn} hint={p.carriedFrom.length ? `Left from ${p.carriedFrom.map((c) => c.label).join(" + ")}` : "Nothing left from earlier salaries"} onClick={() => go("/income/history")} />
-            <SalaryCard value={p.salary} hint={`${p.label}, received ${formatDate(p.receivedOn)}`} onOpen={() => go("/income/history")} />
+            <RevealCard label="+ Latest salary" value={p.salary} hint={`${p.label}, received ${formatDate(p.receivedOn)}`} onOpen={() => go("/income/history")} />
             <Card label="= Total available" value={p.totalAvailable} />
             <Card label="− Spends this period" value={p.spends} hint={`${p.paymentCount} payments since ${formatDate(p.receivedOn)}`} />
           </div>
@@ -346,7 +346,8 @@ function HomeView({ snapshot, txns, today, go }: ViewCtx) {
       <section>
         <h2 className="mb-3 text-sm font-semibold">Savings &amp; commitments</h2>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
-          <Card label="In savings" value={f.metrics.inSavings} hint={`Savings goals ${formatTaka(f.metrics.savingsGoals)} · Invested ${formatTaka(f.metrics.invested)}`} onClick={() => go("/savings")} />
+          <RevealCard label="Savings" value={f.metrics.savingsGoals} hint="In savings goals — not in Remaining balance" onOpen={() => go("/savings")} />
+          <RevealCard label="Investment" value={f.metrics.invested} hint="Invested and not yet returned — not in Remaining balance" onOpen={() => go("/savings")} />
           <Card label="Pending payments" value={f.metrics.pendingTotal} hint={f.metrics.pendingCount ? `${f.metrics.pendingCount} not paid yet` : "Nothing waiting"} onClick={() => go("/transactions")} />
           <Card label="Borrowed money left" value={f.borrowed.remaining} hint={`Borrowed ${formatTaka(f.borrowed.total)} · Repaid ${formatTaka(f.borrowed.repaid)}`} onClick={() => go("/people")} />
         </div>
@@ -655,11 +656,10 @@ function ReportView({ snapshot, txns, today }: ViewCtx) {
     ["Opening balance (carried forward)", r.openingBalance],
     ["+ Salary", r.salary],
     ["+ Additional income", r.additionalIncome + r.broughtIn],
-    ...(r.otherInflows ? ([["+ Borrowed, repaid to you, capital back (not income)", r.otherInflows]] as [string, number][]) : []),
+    ...(r.otherInflows ? ([["+ Investment capital back (not income)", r.otherInflows]] as [string, number][]) : []),
     ["= Total money this month (before spending)", r.totalAvailable, "font-medium border-t"],
     ["− Expenses", r.expenses],
     ["− Savings / investments (net)", r.savingsAndTransfers],
-    ...(r.loansOut ? ([["− Lent or repaid to lenders (not expenses)", r.loansOut]] as [string, number][]) : []),
     ["= Closing balance (money left)", r.closingBalance, "font-semibold border-t"],
   ];
   return (
@@ -686,6 +686,11 @@ function ReportView({ snapshot, txns, today }: ViewCtx) {
             ))}
           </tbody>
         </table>
+        {(r.loansIn > 0 || r.loansOut > 0) && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Lending &amp; borrowing (not in the balance): {formatTaka(r.loansOut)} lent or repaid to lenders · {formatTaka(r.loansIn)} borrowed or repaid to you
+          </p>
+        )}
       </Section>
       <Section title="Category-wise spending">
         {cats.length === 0 ? (

@@ -6,7 +6,7 @@
  * totals, balances, savings, borrowed money — is computed by exactly the same code in both
  * places. No database imports here: this module must stay safe to ship to the browser.
  */
-import { IN_TYPES, OUT_TYPES, type CategoryNature, type IncomeKind, type TxnStatus, type TxnType } from "../constants";
+import { SPENDABLE_IN_TYPES, SPENDABLE_OUT_TYPES, type CategoryNature, type IncomeKind, type TxnStatus, type TxnType } from "../constants";
 import { addDays } from "../dates";
 import { allocateFifo, compareLedgerOrder, type FundingConsumer, type FundingSource, type Shortfall } from "./fifo";
 
@@ -52,12 +52,13 @@ export interface PersonAllocationInfo {
 
 /**
  * Money arriving into the spendable pool. Besides income this includes money that is not
- * income (a savings withdrawal, money borrowed or repaid to you, investment capital returned),
- * so it can pay for later expenses (FIFO) without ever being counted as income.
+ * income (a savings withdrawal, investment capital returned), so it can pay for later
+ * expenses (FIFO) without ever being counted as income. Lending & Borrowing is never part of
+ * the pool: borrowed money and loan repayments are not sources (see LOAN_TYPES).
  */
-export const SOURCE_TYPES: TxnType[] = IN_TYPES;
-/** Money leaving the spendable pool: expenses, and moves that are not expenses (saving, lending, repaying, investing). */
-export const CONSUMER_TYPES: TxnType[] = OUT_TYPES;
+export const SOURCE_TYPES: TxnType[] = SPENDABLE_IN_TYPES;
+/** Money leaving the spendable pool: expenses, and moves that are not expenses (saving, investing). Lending and repaying a lender are not. */
+export const CONSUMER_TYPES: TxnType[] = SPENDABLE_OUT_TYPES;
 
 /** What a funding source is, for labels: an income kind, or a non-income inflow. */
 export type SourceKind = IncomeKind | "withdrawal" | "loan" | "capital";
@@ -78,11 +79,11 @@ export function affectsFunding(t: { type: TxnType; status: TxnStatus }): boolean
   return isSource(t) || isConsumer(t);
 }
 
-/** Signed effect on the spendable balance (mirrors SPENDABLE_DELTA_EXPR on the server). */
+/** Signed effect on the spendable balance (mirrors SPENDABLE_DELTA_EXPR on the server). Loans: always 0. */
 export function spendableDelta(t: { type: TxnType; status: TxnStatus; amount: number }): number {
   if (t.status !== "paid") return 0;
-  if (IN_TYPES.includes(t.type)) return t.amount;
-  if (OUT_TYPES.includes(t.type)) return -t.amount;
+  if (SPENDABLE_IN_TYPES.includes(t.type)) return t.amount;
+  if (SPENDABLE_OUT_TYPES.includes(t.type)) return -t.amount;
   return 0;
 }
 
@@ -167,9 +168,11 @@ export interface PeriodTotals {
   savingsWithdrawals: number;
   /** Investments + net savings moves. */
   savingsAndTransfers: number;
-  /** Money borrowed or repaid to you + investment capital returned (not income). */
+  /** Investment capital returned (not income). */
   otherInflows: number;
-  /** Money lent, or repaid to a lender (not an expense). */
+  /** Money borrowed, or repaid to you — shown for information, never added to the balance. */
+  loansIn: number;
+  /** Money lent, or repaid to a lender — shown for information, never deducted from the balance. */
   loansOut: number;
   totalOutflows: number;
   closingBalance: number;
@@ -185,7 +188,7 @@ export function summarizePeriod(
 ): PeriodTotals {
   const nature = natureOf(lookups);
   let salary = 0, additionalIncome = 0, broughtIn = 0, expenses = 0, investments = 0;
-  let savingsDeposits = 0, savingsWithdrawals = 0, pendingTotal = 0, otherInflows = 0, loansOut = 0;
+  let savingsDeposits = 0, savingsWithdrawals = 0, pendingTotal = 0, otherInflows = 0, loansIn = 0, loansOut = 0;
   const daily = new Map<string, number>();
   for (const t of txns) {
     if (t.status === "pending") {
@@ -212,9 +215,11 @@ export function summarizePeriod(
       case "invest_out":
         investments += t.amount;
         break;
-      case "loan_in":
       case "invest_in":
         otherInflows += t.amount;
+        break;
+      case "loan_in":
+        loansIn += t.amount;
         break;
       case "loan_out":
         loansOut += t.amount;
@@ -224,7 +229,8 @@ export function summarizePeriod(
   const totalIncome = salary + additionalIncome;
   const totalAvailable = opening + totalIncome + broughtIn + otherInflows;
   const savingsAndTransfers = investments + savingsDeposits - savingsWithdrawals;
-  const totalOutflows = expenses + savingsAndTransfers + loansOut;
+  // Loans (loansIn / loansOut) are left out on purpose: they never change the remaining balance.
+  const totalOutflows = expenses + savingsAndTransfers;
   return {
     openingBalance: opening,
     salary,
@@ -238,6 +244,7 @@ export function summarizePeriod(
     savingsWithdrawals,
     savingsAndTransfers,
     otherInflows,
+    loansIn,
     loansOut,
     totalOutflows,
     closingBalance: totalAvailable - totalOutflows,
@@ -415,7 +422,7 @@ export interface SalaryCycle {
   /** Which earlier salaries (or other income) the carried-in money is left over from. */
   carriedFrom: { sourceId: string; label: string; date: string; amount: number }[];
   otherIncome: number;
-  /** Borrowed money, loan repayments received and investment capital returned during the cycle (not income). */
+  /** Investment capital returned during the cycle (not income). Borrowed money is never counted. */
   otherInflows: number;
   totalAvailable: number;
   totalSpent: number;
@@ -586,14 +593,12 @@ export function computeDashboardFigures(input: DashboardInput) {
       carriedFrom: cycle.carriedFrom,
       salary: pr.salary,
       otherIncome: pr.additionalIncome + pr.broughtIn,
-      /** Borrowed money, loan repayments received, investment capital returned (not income). */
+      /** Investment capital returned (not income). */
       otherInflows: pr.otherInflows,
       totalAvailable: pr.totalAvailable,
       spends: pr.totalOutflows,
       savedOrInvested: pr.savingsAndTransfers,
-      /** Money lent, or repaid to a lender (not spending). */
-      lentOrRepaid: pr.loansOut,
-      paymentCount: inPeriod.filter((t) => t.status === "paid" && OUT_TYPES.includes(t.type)).length,
+      paymentCount: inPeriod.filter((t) => t.status === "paid" && SPENDABLE_OUT_TYPES.includes(t.type)).length,
       remaining: pr.closingBalance,
     };
   }

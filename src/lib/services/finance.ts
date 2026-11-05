@@ -12,6 +12,7 @@ import { expenseLines, groupByCategory, summarizePeriod, type CategoryTotal, typ
  *   spendable  = Σ income + Σ savings withdrawals − Σ paid expenses − Σ savings deposits
  *   savings    = Σ savings deposits − Σ savings withdrawals
  *   transfers between own accounts change account balances only, never totals.
+ *   lending & borrowing (principal and repayments) change account balances only, never totals.
  *   pending expenses change nothing until they are marked paid.
  */
 
@@ -87,9 +88,11 @@ export interface PeriodReport {
   savingsWithdrawals: number;
   /** Investments + net savings moves. */
   savingsAndTransfers: number;
-  /** Borrowed money, loan repayments received, investment capital returned (not income). */
+  /** Investment capital returned (not income). */
   otherInflows: number;
-  /** Money lent, or repaid to a lender (not an expense). */
+  /** Money borrowed, or repaid to you — for information only, never added to the balance. */
+  loansIn: number;
+  /** Money lent, or repaid to a lender — for information only, never deducted from the balance. */
   loansOut: number;
   totalOutflows: number;
   closingBalance: number;

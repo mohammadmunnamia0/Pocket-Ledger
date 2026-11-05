@@ -71,7 +71,7 @@ export function GoalDialog({
             );
           }}
         >
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Goal name" htmlFor="g-name" className="col-span-2">
               <Input id="g-name" value={name} onChange={(e) => setName(e.target.value)} required maxLength={80} autoFocus />
             </Field>
@@ -203,7 +203,7 @@ export function SavingsMoveDialog({
         </DialogHeader>
         {step === "edit" ? (
           <form className="grid gap-4" onSubmit={review}>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field label="Amount (৳)" htmlFor="sv-amount">
                 <Input id="sv-amount" value={amount} onChange={(e) => setAmount(e.target.value)} inputMode="decimal" required autoFocus className="tabular text-base" />
               </Field>

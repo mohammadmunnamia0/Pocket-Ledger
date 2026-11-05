@@ -14,9 +14,18 @@ export const TXN_TYPES = [
 ] as const;
 export type TxnType = (typeof TXN_TYPES)[number];
 
-/** Types that bring money into the spendable balance / take it out. Transfers move between own accounts. */
+/** Types that bring money into an account / take it out (direction for lists and account balances). Transfers move between own accounts. */
 export const IN_TYPES: TxnType[] = ["income", "savings_withdrawal", "loan_in", "invest_in"];
 export const OUT_TYPES: TxnType[] = ["expense", "savings_deposit", "loan_out", "invest_out"];
+/**
+ * Lending & Borrowing principal and repayments. They still move money in the chosen account
+ * (Bank / Cash / Mobile), but are never part of the remaining balance: borrowed money is not
+ * yours to spend, and money you lend is tracked as a receivable instead of being deducted.
+ */
+export const LOAN_TYPES: TxnType[] = ["loan_out", "loan_in"];
+/** The types that change the remaining (spendable) balance and the salary FIFO ledger: everything but loans. */
+export const SPENDABLE_IN_TYPES: TxnType[] = IN_TYPES.filter((t) => !LOAN_TYPES.includes(t));
+export const SPENDABLE_OUT_TYPES: TxnType[] = OUT_TYPES.filter((t) => !LOAN_TYPES.includes(t));
 /** Created and changed only from Loans / Investments, so both records stay consistent. */
 export const LINKED_TYPES: TxnType[] = ["loan_out", "loan_in", "invest_out", "invest_in"];
 

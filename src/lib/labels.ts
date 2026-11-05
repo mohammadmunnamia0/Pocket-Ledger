@@ -14,8 +14,8 @@ export const TXN_TYPE_LABELS: Record<TxnType, string> = {
   transfer: "Transfer",
   savings_deposit: "Savings deposit",
   savings_withdrawal: "Savings withdrawal",
-  loan_out: "Loan — money out",
-  loan_in: "Loan — money in",
+  loan_out: "Loan — money out (not in balance)",
+  loan_in: "Loan — money in (not in balance)",
   invest_out: "Investment",
   invest_in: "Investment capital returned",
 };

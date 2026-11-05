@@ -83,7 +83,7 @@ export function LoanDialog({ trigger, direction, loan, accounts }: { trigger: Re
           <Field label={lent ? "Person (borrower)" : "Lender"} htmlFor="loan-person" error={errors.person}>
             <Input id="loan-person" value={f.person} onChange={(e) => set({ person: e.target.value })} required maxLength={80} autoFocus={!loan} placeholder={lent ? "e.g. Rahim" : "e.g. Karim"} />
           </Field>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Amount (৳)" htmlFor="loan-amount" error={errors.amount}>
               <Input id="loan-amount" value={f.amount} onChange={(e) => set({ amount: e.target.value })} inputMode="decimal" required className="tabular text-base" />
             </Field>
@@ -91,7 +91,7 @@ export function LoanDialog({ trigger, direction, loan, accounts }: { trigger: Re
               <Input id="loan-date" type="date" value={f.date} onChange={(e) => set({ date: e.target.value })} required />
             </Field>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label={lent ? "Expected return" : "Expected repayment"} htmlFor="loan-due" error={errors.dueDate} hint="Optional">
               <Input id="loan-due" type="date" value={f.dueDate} onChange={(e) => set({ dueDate: e.target.value })} />
             </Field>
@@ -166,7 +166,7 @@ export function RepaymentDialog({ trigger, loan, accounts }: { trigger: ReactEle
               <Input id="rp-interest" value={interest} onChange={(e) => setInterest(e.target.value)} inputMode="decimal" className="tabular text-base" />
             </Field>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Date" htmlFor="rp-date" error={errors.date}>
               <Input id="rp-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
             </Field>

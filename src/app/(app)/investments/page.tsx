@@ -72,7 +72,7 @@ async function Investments() {
               <Stat label="Current value" value={s.currentValue} />
               <Stat label="Profit / loss" value={s.profitOrLoss} signed />
             </dl>
-            <ul className="grid gap-3 lg:grid-cols-2">
+            <ul className="grid grid-cols-1 gap-3 lg:grid-cols-2">
               {list.map((v) => (
                 <InvestmentCard key={v.id} v={v} accounts={accounts} accountName={accountName} />
               ))}
@@ -87,9 +87,9 @@ async function Investments() {
 function Stat({ label, value, tone, strong = false, signed = false }: { label: string; value: number | null; tone?: "good"; strong?: boolean; signed?: boolean }) {
   const color = signed && value !== null ? (value > 0 ? "text-good" : value < 0 ? "text-critical" : undefined) : tone === "good" ? "text-good" : undefined;
   return (
-    <div className="rounded-lg border p-3">
+    <div className="min-w-0 rounded-lg border p-3">
       <dt className="text-xs text-muted-foreground">{label}</dt>
-      <dd className={cn("tabular font-semibold", strong ? "text-xl" : "text-base", color)}>
+      <dd className={cn("tabular font-semibold break-words", strong ? "text-lg sm:text-xl" : "text-base", color)}>
         {value === null ? <span className="text-sm font-normal text-muted-foreground">Unknown</span> : `${signed && value > 0 ? "+" : ""}${formatTaka(value)}`}
       </dd>
     </div>
@@ -98,11 +98,11 @@ function Stat({ label, value, tone, strong = false, signed = false }: { label: s
 
 function InvestmentCard({ v, accounts, accountName }: { v: InvestmentView; accounts: AccountChoice[]; accountName: Map<string, string> }) {
   return (
-    <li className="rounded-xl border bg-card p-4">
+    <li className="min-w-0 rounded-xl border bg-card p-3 sm:p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="flex items-center gap-2 font-medium">
-            <TrendingUp className="size-4 text-muted-foreground" aria-hidden />
+        <div className="min-w-0 flex-1 basis-48">
+          <p className="flex flex-wrap items-center gap-x-2 gap-y-1 font-medium break-words">
+            <TrendingUp className="size-4 shrink-0 text-muted-foreground" aria-hidden />
             {v.name}
             <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">{INVESTMENT_KIND_LABELS[v.kind]}</span>
           </p>
@@ -110,9 +110,9 @@ function InvestmentCard({ v, accounts, accountName }: { v: InvestmentView; accou
             Invested {formatDate(v.date)}
             {v.accountId && ` · from ${accountName.get(v.accountId) ?? "account"}`}
           </p>
-          {v.note && <p className="mt-1 text-sm">{v.note}</p>}
+          {v.note && <p className="mt-1 text-sm break-words">{v.note}</p>}
         </div>
-        <div className="text-right">
+        <div className="shrink-0 text-right">
           <p className="text-xs text-muted-foreground">Profit / loss</p>
           <p className={cn("text-lg font-semibold tabular", v.profitOrLoss !== null && (v.profitOrLoss > 0 ? "text-good" : v.profitOrLoss < 0 ? "text-critical" : ""))}>
             {v.profitOrLoss === null ? <span className="text-sm font-normal text-muted-foreground">Unknown</span> : `${v.profitOrLoss > 0 ? "+" : ""}${formatTaka(v.profitOrLoss)}`}
@@ -178,14 +178,15 @@ function InvestmentCard({ v, accounts, accountName }: { v: InvestmentView; accou
         <summary className="cursor-pointer text-xs text-muted-foreground">History ({v.entries.length})</summary>
         <ul className="mt-2 divide-y">
           {[...v.entries].reverse().map((e) => (
-            <li key={e.id} className="flex items-center gap-2 py-1.5">
-              <span className="w-20 shrink-0 text-xs text-muted-foreground">{formatDate(e.date)}</span>
-              <span className="min-w-0 flex-1 truncate">
+            <li key={e.id} className="flex items-start gap-2 py-2">
+              <span className="hidden w-24 shrink-0 pt-px text-xs text-muted-foreground sm:block">{formatDate(e.date)}</span>
+              <span className="min-w-0 flex-1 break-words">
                 {e.title}
                 {e.role === "profit" && <span className="text-xs text-good"> · income</span>}
                 {e.role === "capital" && <span className="text-xs text-muted-foreground"> · not income</span>}
+                <span className="block text-xs text-muted-foreground sm:hidden">{formatDate(e.date)}</span>
               </span>
-              <span className="tabular">{formatTaka(e.amount)}</span>
+              <span className="shrink-0 font-medium tabular">{formatTaka(e.amount)}</span>
               {e.role !== "invested" && (
                 <ConfirmButton
                   title="Remove this entry?"

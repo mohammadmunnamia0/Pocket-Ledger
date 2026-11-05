@@ -76,11 +76,10 @@ async function CalendarReport({ userId, sp }: { userId: string; sp: SP }) {
     ["+ Salary", r.salary],
     ["+ Additional income", r.additionalIncome],
     ...(r.broughtIn ? ([["+ Opening balance entries", r.broughtIn]] as [string, number][]) : []),
-    ...(r.otherInflows ? ([["+ Borrowed, repaid to you, capital back (not income)", r.otherInflows]] as [string, number][]) : []),
+    ...(r.otherInflows ? ([["+ Investment capital back (not income)", r.otherInflows]] as [string, number][]) : []),
     ["= Total money this month (before spending)", r.totalAvailable, "font-medium border-t"],
     ["− Expenses", r.expenses],
     ["− Savings / investments (net)", r.savingsAndTransfers],
-    ...(r.loansOut ? ([["− Lent or repaid to lenders (not expenses)", r.loansOut]] as [string, number][]) : []),
     ["= Closing balance (money left)", r.closingBalance, "font-semibold border-t"],
   ];
 
@@ -112,6 +111,11 @@ async function CalendarReport({ userId, sp }: { userId: string; sp: SP }) {
             <p className="mt-3 text-xs text-muted-foreground">
               Investments {formatTaka(r.investments)} · deposits {formatTaka(r.savingsDeposits)} · withdrawals {formatTaka(r.savingsWithdrawals)}
               {r.pendingTotal > 0 && ` · ${formatTaka(r.pendingTotal)} pending (not deducted)`}
+            </p>
+          )}
+          {(r.loansIn > 0 || r.loansOut > 0) && (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Lending &amp; borrowing (not in the balance): {formatTaka(r.loansOut)} lent or repaid to lenders · {formatTaka(r.loansIn)} borrowed or repaid to you
             </p>
           )}
         </Section>
@@ -224,7 +228,7 @@ async function CycleReport({ userId }: { userId: string }) {
             <Cell label="Salary amount" value={c.startingAmount} />
             <Cell label="Carried forward in" value={c.carriedIn} />
             <Cell label="Other income in cycle" value={c.otherIncome} />
-            {c.otherInflows > 0 && <Cell label="Borrowed / repaid to you (not income)" value={c.otherInflows} />}
+            {c.otherInflows > 0 && <Cell label="Investment capital back (not income)" value={c.otherInflows} />}
             <Cell label="Total at cycle start" value={c.totalAvailable} strong />
             <Cell label="Spent in cycle" value={c.totalSpent} hint={`${c.expenseCount} payments`} />
             <Cell label="Funded by this salary" value={c.fundedByThisSalary} />

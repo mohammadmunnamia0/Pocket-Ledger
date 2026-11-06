@@ -66,8 +66,8 @@ export function LoanDialog({ trigger, direction, loan, accounts }: { trigger: Re
           <DialogTitle>{loan ? "Edit loan" : lent ? "Lend money" : "Borrow money"}</DialogTitle>
           <DialogDescription>
             {lent
-              ? "The money leaves the chosen account and is owed to you — it is not an expense."
-              : "The money arrives in the chosen account and you owe it — it is not salary or income."}
+              ? "Recorded as money owed to you. It is not an expense and never changes your Remaining balance or Bank / Cash / Mobile balances."
+              : "Recorded as money you owe. It is not income and never changes your Remaining balance or Bank / Cash / Mobile balances."}
           </DialogDescription>
         </DialogHeader>
         <form
@@ -95,7 +95,7 @@ export function LoanDialog({ trigger, direction, loan, accounts }: { trigger: Re
             <Field label={lent ? "Expected return" : "Expected repayment"} htmlFor="loan-due" error={errors.dueDate} hint="Optional">
               <Input id="loan-due" type="date" value={f.dueDate} onChange={(e) => set({ dueDate: e.target.value })} />
             </Field>
-            <Field label={lent ? "Paid from" : "Received in"} htmlFor="loan-account" error={errors.accountId}>
+            <Field label={lent ? "Given from" : "Received in"} htmlFor="loan-account" error={errors.accountId} hint="For your record only">
               <AccountSelect id="loan-account" value={f.accountId} onChange={(v) => set({ accountId: v })} accounts={accounts} />
             </Field>
           </div>
@@ -144,8 +144,8 @@ export function RepaymentDialog({ trigger, loan, accounts }: { trigger: ReactEle
         <DialogHeader>
           <DialogTitle>{lent ? `Repayment from ${loan.person}` : `Repay ${loan.person}`}</DialogTitle>
           <DialogDescription>
-            {formatTaka(loan.outstanding)} outstanding. {lent ? "Repaid principal is not income." : "Repaying is not an expense."} Interest is recorded separately
-            {lent ? " as income." : " as an expense."}
+            {formatTaka(loan.outstanding)} outstanding. Only the outstanding amount changes — the repayment never changes your Remaining balance or Bank /
+            Cash / Mobile balances. Interest is recorded separately{lent ? " as income." : " as an expense."}
           </DialogDescription>
         </DialogHeader>
         <form
@@ -170,7 +170,7 @@ export function RepaymentDialog({ trigger, loan, accounts }: { trigger: ReactEle
             <Field label="Date" htmlFor="rp-date" error={errors.date}>
               <Input id="rp-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} required />
             </Field>
-            <Field label={lent ? "Received in" : "Paid from"} htmlFor="rp-account">
+            <Field label={lent ? "Received in" : "Paid from"} htmlFor="rp-account" hint="For your record only (and where interest goes)">
               <AccountSelect id="rp-account" value={accountId} onChange={setAccountId} accounts={accounts} />
             </Field>
           </div>

@@ -8,7 +8,11 @@ import { Account, SavingsGoal, Transaction, oid, HOLDING_KINDS } from "../db/mod
 import { AppError } from "../errors";
 import { formatTaka } from "../money";
 
-/** Physical balance per account. Savings deposits move money to the goal's linked account, if any. */
+/**
+ * Balance per account. Savings deposits move money to the goal's linked account, if any.
+ * Lending & borrowing (principal and repayments) never change an account: loans are kept as
+ * separate receivable / payable records.
+ */
 export async function getAccountBalances(userId: string, session?: ClientSession): Promise<Map<string, number>> {
   await connectDB();
   const uid = oid(userId);
@@ -29,15 +33,14 @@ export async function getAccountBalances(userId: string, session?: ClientSession
     const a = _id.a?.toString();
     switch (_id.type) {
       case "income":
-      case "loan_in":
       case "invest_in":
         add(a, v);
         break;
       case "expense":
-      case "loan_out":
       case "invest_out":
         add(a, -v);
         break;
+      // loan_in / loan_out: deliberately not counted (see above).
       case "transfer":
         add(a, -v);
         add(_id.to?.toString(), v);

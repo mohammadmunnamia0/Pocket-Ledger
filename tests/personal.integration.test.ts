@@ -14,7 +14,7 @@ import { getSalaryCycles } from "@/lib/services/salary";
 import { getHoldings, setHoldings } from "@/lib/services/holdings";
 import { deleteLoan, deleteLoanEntry, getLoan, listLoans, recordLoanRepayment, saveLoan, summarizeLoans } from "@/lib/services/loans";
 import { deleteInvestment, listInvestments, recordInvestmentReturn, saveInvestment, setInvestmentValue, summarizeInvestments } from "@/lib/services/investments";
-import { applyOperation } from "@/lib/services/sync";
+import { applyOperation, getSnapshot } from "@/lib/services/sync";
 import { verifyFundingIntegrity } from "@/lib/ledger/engine";
 import { computeDashboardFigures } from "@/lib/ledger/model";
 
@@ -113,19 +113,20 @@ describe("lending", () => {
     let loan = (await getLoan(userId, id, TODAY))!;
     expect([loan.principal, loan.repaid, loan.outstanding, loan.status]).toEqual([tk(5000), 0, tk(5000), "outstanding"]);
     expect(loan.overdue).toBe(true); // due 20 Oct, nothing repaid by 31 Dec
-    expect(await holding("cash")).toBe(tk(15000)); // cash went down
-    expect(await spendable()).toBe(tk(20000)); // lending is never deducted from the remaining balance
+    expect(await holding("cash")).toBe(tk(20000)); // lending never changes Bank / Cash / Mobile
+    expect(await spendable()).toBe(tk(20000)); // ...nor the remaining balance
     let report = await getMonthReport(userId, "2026-10");
     expect(report.expenses).toBe(0); // lending is not an expense
 
     await recordLoanRepayment(userId, id, { amount: "2000", date: "2026-10-15", accountId: acct.cash });
     loan = (await getLoan(userId, id, TODAY))!;
     expect([loan.repaid, loan.outstanding, loan.status]).toEqual([tk(2000), tk(3000), "partial"]);
+    expect([await holding("cash"), await spendable()]).toEqual([tk(20000), tk(20000)]); // a repayment to you changes neither
 
     await recordLoanRepayment(userId, id, { amount: "3000", date: "2026-10-18", accountId: acct.mobile, interest: "200" });
     loan = (await getLoan(userId, id, TODAY))!;
     expect([loan.repaid, loan.outstanding, loan.status, loan.interest, loan.overdue]).toEqual([tk(5000), 0, "repaid", tk(200), false]);
-    expect(await holding("mobile")).toBe(tk(3200));
+    expect(await holding("mobile")).toBe(tk(200)); // only the interest (real income) lands in Mobile
     expect(await spendable()).toBe(tk(20200)); // + interest only — repaid principal is never added
 
     report = await getMonthReport(userId, "2026-10");
@@ -137,10 +138,13 @@ describe("lending", () => {
     await expectIntegrity();
   });
 
-  it("refuses over-repayment, can't lend money you don't have, and edits/deletes keep balances right", async () => {
+  it("refuses over-repayment, and edits/deletes never touch any balance", async () => {
     await salary(6000, "2026-10-01");
-    await expect(saveLoan(userId, { direction: "lent", person: "Rahim", amount: "9000", date: "2026-10-10", accountId: acct.cash })).rejects.toThrow(/insufficient|not enough/i);
-    expect(await Loan.countDocuments({ userId })).toBe(0); // nothing half-saved
+    // A loan is a separate record: lending more than the account holds is allowed and changes nothing.
+    const big = await saveLoan(userId, { direction: "lent", person: "Rahim", amount: "9000", date: "2026-10-10", accountId: acct.cash });
+    expect([await holding("cash"), await spendable()]).toEqual([tk(6000), tk(6000)]);
+    await deleteLoan(userId, big);
+    expect(await Loan.countDocuments({ userId })).toBe(0);
 
     const id = await saveLoan(userId, { direction: "lent", person: "Rahim", amount: "5000", date: "2026-10-10", accountId: acct.cash });
     await recordLoanRepayment(userId, id, { amount: "2000", date: "2026-10-12", accountId: acct.cash });
@@ -150,7 +154,7 @@ describe("lending", () => {
     await saveLoan(userId, { direction: "lent", person: "Rahim K.", amount: "4000", date: "2026-10-10", accountId: acct.cash }, id);
     let loan = (await getLoan(userId, id, TODAY))!;
     expect([loan.person, loan.principal, loan.outstanding]).toEqual(["Rahim K.", tk(4000), tk(2000)]);
-    expect(await spendable()).toBe(tk(6000)); // lending and repayments leave the remaining balance alone
+    expect([await holding("cash"), await spendable()]).toEqual([tk(6000), tk(6000)]); // lending and repayments touch neither
 
     const repayment = loan.entries.find((e) => e.role === "repayment")!;
     await deleteLoanEntry(userId, id, repayment.id);
@@ -175,8 +179,8 @@ describe("borrowing", () => {
   it("Karim example: ৳10,000 borrowed into Bank — not salary or income — repaid in parts", async () => {
     await salary(3000, "2026-10-01", acct.bank);
     const id = await saveLoan(userId, { direction: "borrowed", person: "Karim", amount: "10000", date: "2026-10-12", dueDate: "2026-10-30", accountId: acct.bank, note: "Business Funding" });
-    expect(await holding("bank")).toBe(tk(13000)); // salary 3,000 + borrowed 10,000 — the money is really there
-    expect(await spendable()).toBe(tk(3000)); // but borrowed money is never added to the remaining balance
+    expect(await holding("bank")).toBe(tk(3000)); // borrowed money never changes Bank / Cash / Mobile
+    expect(await spendable()).toBe(tk(3000)); // ...nor the remaining balance
 
     const report = await getMonthReport(userId, "2026-10");
     expect(report.salary).toBe(tk(3000));
@@ -192,18 +196,20 @@ describe("borrowing", () => {
     await expense("Laptop bag", 2000, "2026-10-14", acct.bank);
     expect(await spendable()).toBe(tk(1000));
 
-    // Repaying still needs the money to be in the chosen place, but is never deducted from the balance.
-    await expect(recordLoanRepayment(userId, id, { amount: "4000", date: "2026-10-20", accountId: acct.cash })).rejects.toThrow(/not enough/i);
+    // Repaying is never deducted from any balance (Cash is empty here, and that's fine).
     await createTransaction(userId, { type: "income", title: "Bonus", amount: "6000", date: "2026-10-19", incomeKind: "bonus", accountId: acct.cash });
     await recordLoanRepayment(userId, id, { amount: "4000", date: "2026-10-20", accountId: acct.cash });
     const loan = (await getLoan(userId, id, TODAY))!;
     expect([loan.repaid, loan.outstanding, loan.status]).toEqual([tk(4000), tk(6000), "partial"]);
     expect(await spendable()).toBe(tk(7000)); // 3,000 − 2,000 + 6,000; the 4,000 repayment isn't deducted
-    expect(await holding("cash")).toBe(tk(2000));
+    expect(await holding("cash")).toBe(tk(6000));
+    expect((await getHoldings(userId)).total).toBe(await spendable()); // Bank + Cash + Mobile = Remaining balance
 
     const sum = summarizeLoans(await listLoans(userId, TODAY), "borrowed");
     expect([sum.total, sum.repaid, sum.outstanding]).toEqual([tk(10000), tk(4000), tk(6000)]);
     expect(sum.byPerson).toEqual([{ person: "Karim", outstanding: tk(6000), nextDue: "2026-10-30" }]);
+    // The offline app's Payable card reads the same figure.
+    expect((await getSnapshot(userId)).loanTotals?.borrowed).toEqual({ total: tk(10000), repaid: tk(4000), outstanding: tk(6000) });
 
     // Nothing was funded by the loan, so deleting it leaves the remaining balance unchanged.
     await deleteLoan(userId, id);

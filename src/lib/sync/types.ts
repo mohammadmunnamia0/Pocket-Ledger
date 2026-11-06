@@ -21,6 +21,8 @@ export interface Snapshot {
   };
   personAllocations: { id: string; personId: string; month: string; amount: number; note: string | null }[];
   goalTargets: { id: string; targetAmount: number; monthlyTarget: number }[];
+  /** Lending & Borrowing totals (loans can't change offline). Missing in snapshots saved before it existed. */
+  loanTotals?: Record<"lent" | "borrowed", { total: number; repaid: number; outstanding: number }>;
   transactions: TxnDTO[];
 }
 

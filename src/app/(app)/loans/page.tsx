@@ -23,7 +23,7 @@ export default function LoansPage() {
       <PageHeader
         title="Lending & Borrowing"
         help="loans"
-        description="Money you lent to people and money you borrowed — with repayments and what is still outstanding. Neither is income or expense."
+        description="Money you lent to people and money you borrowed — with repayments and what is still outstanding. Kept as separate records: never income or expense, and never part of your Remaining balance or Bank / Cash / Mobile balances."
       />
       <Suspense fallback={<CardsSkeleton count={4} />}>
         <Loans />

@@ -21,22 +21,10 @@ import { cn } from "@/lib/utils";
 const ICONS: Record<HoldingKind, typeof Wallet> = { bank: Landmark, cash: Wallet, mobile: Smartphone };
 
 /** Bank / Cash / Mobile Banking boxes under the Remaining balance card. */
-export function HoldingsStrip({ holdings, remaining, owed = 0, lent = 0 }: { holdings: Holdings; remaining: number; owed?: number; lent?: number }) {
-  // The boxes hold the real money; the remaining balance leaves out money set aside in savings
-  // goals and all lending & borrowing (borrowed money still owed is in the accounts, money lent
-  // and not yet repaid has left them), so the two can differ.
+export function HoldingsStrip({ holdings, remaining }: { holdings: Holdings; remaining: number }) {
+  // Money set aside in savings goals stays in its account but isn't spendable, so the two can differ.
+  // (Lending & borrowing never touch either side.)
   const gap = holdings.total + holdings.other - remaining;
-  const loansNet = owed - lent;
-  const savingsGap = gap - loansNet;
-  const reasons = [
-    owed > 0 && lent > 0 && loansNet !== 0
-      ? `${formatTaka(Math.abs(loansNet))} ${loansNet > 0 ? "more" : "less"} from loans — ${formatTaka(owed)} borrowed and still owed, ${formatTaka(lent)} lent and still out (neither is in the remaining balance)`
-      : owed > 0 && lent === 0
-        ? `${formatTaka(owed)} is borrowed money you still owe (not part of the remaining balance)`
-        : lent > 0 && owed === 0 && `${formatTaka(lent)} you lent is still with others (not deducted from the remaining balance)`,
-    savingsGap > 0 && `${formatTaka(savingsGap)} is set aside in savings goals and stays in its account`,
-    savingsGap < 0 && `${formatTaka(-savingsGap)} is unexplained — check for a missing or wrongly-recorded entry`,
-  ].filter(Boolean);
   return (
     <div className="rounded-xl border border-primary/40 bg-primary/5 p-3 sm:p-4" aria-labelledby="holdings-title">
       <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1">
@@ -70,10 +58,12 @@ export function HoldingsStrip({ holdings, remaining, owed = 0, lent = 0 }: { hol
           );
         })}
       </ul>
-      <p className={cn("mt-2 text-xs", gap === 0 || savingsGap >= 0 ? "text-muted-foreground" : "text-warning")} role={savingsGap < 0 ? "status" : undefined}>
+      <p className={cn("mt-2 text-xs", gap === 0 ? "text-muted-foreground" : "text-warning")} role={gap === 0 ? undefined : "status"}>
         {gap === 0
           ? `Bank + Cash + Mobile Banking = ${formatTaka(holdings.total)} — matches the remaining balance.`
-          : `These add up to ${formatTaka(holdings.total)}${holdings.other !== 0 ? ` (+ ${formatTaka(holdings.other)} in other accounts)` : ""}, ${formatTaka(Math.abs(gap))} ${gap > 0 ? "more" : "less"} than the remaining balance: ${reasons.join("; ")}.`}
+          : holdings.other !== 0
+            ? `These add up to ${formatTaka(holdings.total)}; ${formatTaka(holdings.other)} more is in other accounts (card / savings). Together they differ from the remaining balance by ${formatTaka(Math.abs(gap))}${gap > 0 ? " — money set aside in savings goals stays in its account." : "."}`
+            : `These add up to ${formatTaka(holdings.total)}, ${formatTaka(Math.abs(gap))} ${gap > 0 ? "more" : "less"} than the remaining balance${gap > 0 ? " — money set aside in savings goals stays in its account but isn't spendable." : ". Check for a missing or wrongly-recorded entry."}`}
       </p>
     </div>
   );

@@ -4,7 +4,7 @@ import type { MetadataRoute } from "next";
 export default function manifest(): MetadataRoute.Manifest {
   return {
     id: "/",
-    name: "PocketLedger — Salary & Expense Tracker",
+    name: "PocketLedger",
     short_name: "PocketLedger",
     description: "Track your salary, daily expenses, bills, family allocations and savings in Taka.",
     start_url: "/",

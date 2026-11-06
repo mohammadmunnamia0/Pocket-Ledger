@@ -3,6 +3,8 @@ import { connectDB } from "../db/connect";
 import { PersonAllocation, SavingsGoal, SyncOp, Transaction, User, oid, isObjectId } from "../db/models";
 import { AppError } from "../errors";
 import { getLookups } from "./lookups";
+import { listLoans, summarizeLoans } from "./loans";
+import { todayISO } from "../dates";
 import { createTransactionOnce, deleteTransaction, toTxnDTO, updateTransaction } from "./transactions";
 import type { Snapshot, SyncOperation, SyncResult } from "../sync/types";
 
@@ -15,19 +17,25 @@ async function stampOf(txnId: string): Promise<string | null> {
 export async function getSnapshot(userId: string): Promise<Snapshot> {
   await connectDB();
   const uid = oid(userId);
-  const [user, lookups, allocations, goals, txns] = await Promise.all([
+  const [user, lookups, allocations, goals, txns, loans] = await Promise.all([
     User.findById(uid, { name: 1, email: 1 }).lean(),
     getLookups(userId),
     PersonAllocation.find({ userId: uid }).sort({ month: 1 }).lean(),
     SavingsGoal.find({ userId: uid }, { targetAmount: 1, monthlyTarget: 1 }).lean(),
     Transaction.find({ userId: uid }).sort({ date: 1, createdAt: 1, _id: 1 }).lean(),
+    listLoans(userId, todayISO()),
   ]);
+  const loanTotal = (d: "lent" | "borrowed") => {
+    const s = summarizeLoans(loans, d);
+    return { total: s.total, repaid: s.repaid, outstanding: s.outstanding };
+  };
   if (!user) throw new AppError("Account not found");
   const body = {
     user: { id: userId, name: user.name, email: user.email },
     lookups,
     personAllocations: allocations.map((a) => ({ id: a._id.toString(), personId: a.personId.toString(), month: a.month, amount: a.amount, note: a.note ?? null })),
     goalTargets: goals.map((g) => ({ id: g._id.toString(), targetAmount: g.targetAmount, monthlyTarget: g.monthlyTarget })),
+    loanTotals: { lent: loanTotal("lent"), borrowed: loanTotal("borrowed") },
     transactions: txns.map((t) => toTxnDTO(t, lookups)),
   };
   const version = createHash("sha1").update(JSON.stringify(body)).digest("hex");

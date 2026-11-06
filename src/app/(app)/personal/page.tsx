@@ -75,7 +75,7 @@ async function Dashboard() {
         ) : (
           // Reads left to right as one sum on desktop; on phones the answer comes first.
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
-            <OverviewCard
+            <RevealCard
               highlight
               className="col-span-2 lg:order-5 lg:col-span-1"
               href="/transactions"
@@ -85,7 +85,7 @@ async function Dashboard() {
             />
             {/* Right under Remaining balance on phones; a full-width row below the sum on desktop. */}
             <div className="col-span-2 lg:order-6 lg:col-span-5">
-              <HoldingsStrip holdings={d.holdings} remaining={p.remaining} owed={d.owed.outstanding} lent={d.lent.outstanding} />
+              <HoldingsStrip holdings={d.holdings} remaining={p.remaining} />
             </div>
             <OverviewCard
               className="lg:order-1"

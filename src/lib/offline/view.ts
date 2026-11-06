@@ -8,7 +8,7 @@ import { computeAllocations, computeDashboardFigures } from "../ledger/model";
 import { txnInputSchema, type TxnInputRaw } from "../validation";
 import { formatDate } from "../dates";
 import { formatTaka } from "../money";
-import { HOLDING_KINDS, IN_TYPES } from "../constants";
+import { HOLDING_KINDS, IN_TYPES, LOAN_TYPES } from "../constants";
 import type { Snapshot } from "../sync/types";
 import type { TxnDTO } from "../services/transactions";
 import type { OutboxEntry } from "./db";
@@ -114,12 +114,12 @@ export function fundingProblem(txns: LocalTxn[], changedId: string): string | nu
   );
 }
 
-/** Balance per account from paid transactions (as the server counts them; savings moves stay in their account). */
+/** Balance per account from paid transactions (as the server counts them; savings moves stay in their account; loans never count). */
 function accountBalances(txns: LocalTxn[]): Map<string, number> {
   const bal = new Map<string, number>();
   const add = (id: string | null, v: number) => id && bal.set(id, (bal.get(id) ?? 0) + v);
   for (const t of txns) {
-    if (t.status !== "paid" || t.type.startsWith("savings_")) continue;
+    if (t.status !== "paid" || t.type.startsWith("savings_") || LOAN_TYPES.includes(t.type)) continue;
     if (t.type === "transfer") {
       add(t.accountId, -t.amount);
       add(t.toAccountId, t.amount);

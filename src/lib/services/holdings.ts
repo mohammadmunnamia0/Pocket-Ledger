@@ -2,7 +2,7 @@
  * Where the balance is kept: Bank, Cash and Mobile Banking.
  *
  * Each figure is the real balance of the accounts of that kind, calculated from transactions
- * (income and expenses on the account, transfers, loans, investments). Changing the split
+ * (income and expenses on the account, transfers, investments — never loans). Changing the split
  * records ordinary transfers between the accounts, so the total never changes and nothing
  * is counted as income or expense. Nothing is invented: a split that doesn't add up to the
  * current total is refused with an explanation.

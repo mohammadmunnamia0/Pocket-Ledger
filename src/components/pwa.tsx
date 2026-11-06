@@ -167,7 +167,8 @@ export function InstallAppButton() {
   if (state !== "prompt" && state !== "ios") return null;
   return (
     <>
-      <Button variant="outline" size="lg" onClick={() => (state === "prompt" ? promptInstall() : setIosOpen(true))}>
+      {/* Hidden on narrow phones so the app name fits; Settings → Install app is always there. */}
+      <Button variant="outline" size="lg" className="max-[399px]:hidden" onClick={() => (state === "prompt" ? promptInstall() : setIosOpen(true))}>
         <Download /> <span className="hidden sm:inline">Install app</span>
         <span className="sr-only sm:hidden">Install app</span>
       </Button>

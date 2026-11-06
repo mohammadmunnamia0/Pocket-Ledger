@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Briefcase, ChevronRight, Code2, Shirt, Sparkles, Wallet } from "lucide-react";
 import { CardsSkeleton, PageHeader } from "@/components/common";
 import { Money } from "@/components/money";
+import { RevealAccountCard } from "@/components/reveal-card";
 import { requireUser } from "@/lib/auth/session";
 import { getBalanceSummary } from "@/lib/services/finance";
 import { listBusinessCards } from "@/lib/services/business";
@@ -34,17 +35,15 @@ async function AccountCards() {
   return (
     <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
       <li>
-        <Link
+        {/* Remaining balance stays private until tapped; the next tap opens the dashboard. */}
+        <RevealAccountCard
           href="/personal"
-          className="group flex h-full flex-col rounded-xl border border-primary/40 bg-primary/5 p-5 transition-colors hover:border-primary/60"
-        >
-          <AccountHead icon={Wallet} name="Personal Finance" type="Salary, expenses, savings, loans & investments" />
-          <span className="mt-4 text-xs font-medium text-muted-foreground">Remaining balance</span>
-          <span className="text-3xl font-semibold tracking-tight">
-            <Money value={spendable} tone="auto" />
-          </span>
-          <OpenLabel text="Open dashboard" />
-        </Link>
+          label="Remaining balance"
+          value={spendable}
+          className="group card-link flex h-full flex-col rounded-xl border border-primary/40 bg-primary/5 p-5 hover:border-primary/60"
+          head={<AccountHead icon={Wallet} name="Personal Finance" type="Salary, expenses, savings, loans & investments" />}
+          footer={<OpenLabel text="Open dashboard" />}
+        />
       </li>
       {businesses.map((b) => {
         const icon = ICONS[BUSINESSES.find((x) => x.key === b.key)!.icon];
@@ -62,7 +61,7 @@ async function AccountCards() {
         }
         return (
           <li key={b.key}>
-            <Link href={`/business/${b.key}`} className="group flex h-full flex-col rounded-xl border bg-card p-5 transition-colors hover:border-foreground/20">
+            <Link href={`/business/${b.key}`} className="group card-link flex h-full flex-col rounded-xl border bg-card p-5 hover:border-foreground/20">
               <AccountHead icon={icon} name={b.name} type={b.type} />
               <span className="mt-4 text-xs font-medium text-muted-foreground">Available balance</span>
               {b.balance === null ? (

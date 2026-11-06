@@ -2,7 +2,7 @@ import { Suspense } from "react";
 import { Bell, LogOut, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ActiveNav, Brand, NavList } from "@/components/app-shell/nav";
-import { MobileNav } from "@/components/app-shell/mobile-nav";
+import { BottomNav, MobileNav } from "@/components/app-shell/mobile-nav";
 import { QuickAdd } from "@/components/quick-add";
 import { InstallAppButton } from "@/components/pwa";
 import { AlertBell } from "@/components/alert-bell";
@@ -41,7 +41,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
           <MobileNav />
           {/* min-w-0 lets the name truncate on very narrow phones instead of pushing buttons off-screen. */}
           <div className="min-w-0 flex-1 lg:hidden">
-            <Brand />
+            <Brand compact />
           </div>
           <div className="ml-auto flex shrink-0 items-center gap-1 sm:gap-2">
             <SyncIndicator />
@@ -61,7 +61,7 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
             <Suspense
               fallback={
                 <Button size="lg" disabled>
-                  <Plus /> <span className="min-[400px]:hidden">Add</span>
+                  <Plus />
                   <span className="hidden min-[400px]:inline">Quick Add</span>
                 </Button>
               }
@@ -70,8 +70,15 @@ export default function AppLayout({ children }: LayoutProps<"/">) {
             </Suspense>
           </div>
         </header>
-        <main className="mx-auto w-full max-w-6xl px-4 pt-6 pb-[calc(1.5rem+env(safe-area-inset-bottom))] sm:px-6">{children}</main>
+        {/* Extra room at the bottom on phones for the quick navigation bar. */}
+        <main className="mx-auto w-full max-w-6xl px-4 pt-6 pb-[calc(5rem+env(safe-area-inset-bottom))] sm:px-6 lg:pb-[calc(1.5rem+env(safe-area-inset-bottom))]">
+          {children}
+        </main>
       </div>
+      {/* Reads the current page, so it streams in like the sidebar menu (the shell stays prerendered). */}
+      <Suspense fallback={null}>
+        <BottomNav />
+      </Suspense>
     </div>
   );
 }

@@ -99,7 +99,7 @@ function DirectionSection({
       }
     >
       {loans.length === 0 ? (
-        <EmptyState title={t.empty} description={direction === "lent" ? "Record money you give someone to be paid back." : "Record money you receive from someone and must pay back."} />
+        <EmptyState icon={HandCoins} title={t.empty} description={direction === "lent" ? "Record money you give someone to be paid back." : "Record money you receive from someone and must pay back."} />
       ) : (
         <div className="space-y-4">
           <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">

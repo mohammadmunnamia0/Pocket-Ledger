@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { Download, Pencil } from "lucide-react";
+import { ArrowLeftRight, Download, Pencil } from "lucide-react";
 import { ButtonLink } from "@/components/button-link";
 import { EmptyState, PageHeader, StatusBadge, TableSkeleton } from "@/components/common";
 import { Money } from "@/components/money";
@@ -138,7 +138,7 @@ async function TransactionsView({ searchParams }: { searchParams: Promise<SP> })
         </div>
       )}
       {list.rows.length === 0 ? (
-        <EmptyState title="No transactions found" description="Try changing the filters, or add an expense with Quick Add." />
+        <EmptyState icon={ArrowLeftRight} title="No transactions found" description="Try changing the filters, or add an expense with Quick Add." />
       ) : (
         <>
           {/* Desktop table */}

@@ -258,12 +258,12 @@ function TxnRow({ t, go, balance }: { t: LocalTxn; go: (to: string) => void; bal
   );
 }
 
-function Card({ label, value, hint, highlight, onClick }: { label: string; value: number; hint?: string; highlight?: boolean; onClick?: () => void }) {
+function Card({ label, value, hint, highlight, onClick, className }: { label: string; value: number; hint?: string; highlight?: boolean; onClick?: () => void; className?: string }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={cn("flex flex-col rounded-xl border bg-card p-4 text-left", highlight && "border-primary/40 bg-primary/5", onClick && "hover:border-foreground/20")}
+      className={cn("card-link flex min-w-0 flex-col rounded-xl border bg-card p-4 text-left", highlight && "border-primary/40 bg-primary/5", onClick && "hover:border-foreground/20", className)}
     >
       <span className="text-xs font-medium text-muted-foreground">{label}</span>
       <span className={cn("mt-1 font-semibold tracking-tight", highlight ? "text-3xl" : "text-xl")}>
@@ -282,11 +282,13 @@ function RevealCard({ label, value, hint, onOpen, highlight, className }: { labe
       type="button"
       onClick={() => (shown ? onOpen() : setShown(true))}
       aria-label={shown ? undefined : `${label}: hidden. Tap to show the amount.`}
-      className={cn("flex min-w-0 flex-col rounded-xl border bg-card p-4 text-left hover:border-foreground/20", highlight && "border-primary/40 bg-primary/5", className)}
+      className={cn("card-link flex min-w-0 flex-col rounded-xl border bg-card p-4 text-left hover:border-foreground/20", highlight && "border-primary/40 bg-primary/5", className)}
     >
       <span className="text-xs font-medium text-muted-foreground">{label}</span>
       <span className={cn("mt-1 font-semibold tracking-tight tabular", highlight ? "text-3xl" : "text-xl")}>
-        {shown ? <span className="text-primary">{formatTaka(value)}</span> : <span className="pointer-events-none select-none blur-[6px]" aria-hidden>{formatTaka(value)}</span>}
+        <span className={shown ? "text-primary" : "private-amount"} aria-hidden={!shown}>
+          {formatTaka(value)}
+        </span>
       </span>
       <span className="mt-1 text-xs text-muted-foreground">{shown ? hint : "Hidden — tap to show"}</span>
     </button>
@@ -298,18 +300,28 @@ function RevealCard({ label, value, hint, onOpen, highlight, className }: { labe
 /** The four account cards (as online). Business accounting isn't available yet. */
 function AccountsView({ snapshot, txns, today, go }: ViewCtx) {
   const f = localFigures(snapshot, txns, today);
+  const [shown, setShown] = useState(false);
   return (
     <div className="space-y-3">
       <h1 className="text-sm font-semibold">Your accounts</h1>
       <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <li>
-          <button type="button" onClick={() => go("/personal")} className="flex w-full flex-col rounded-xl border border-primary/40 bg-primary/5 p-5 text-left">
+          {/* Remaining balance private until tapped (as online); the next tap opens the dashboard. */}
+          <button
+            type="button"
+            onClick={() => (shown ? go("/personal") : setShown(true))}
+            aria-label={shown ? undefined : "Remaining balance: hidden. Tap to show the amount."}
+            className="card-link flex w-full flex-col rounded-xl border border-primary/40 bg-primary/5 p-5 text-left"
+          >
             <span className="font-semibold">Personal Finance</span>
             <span className="text-xs text-muted-foreground">Salary, expenses, savings, loans &amp; investments</span>
             <span className="mt-3 text-xs font-medium text-muted-foreground">Remaining balance</span>
-            <span className="text-3xl font-semibold tracking-tight">
-              <Money value={f.metrics.availableNow} tone="auto" />
+            <span className="text-3xl font-semibold tracking-tight tabular">
+              <span className={shown ? "text-primary" : "private-amount"} aria-hidden={!shown}>
+                {formatTaka(f.metrics.availableNow)}
+              </span>
             </span>
+            {!shown && <span className="mt-1 text-xs text-muted-foreground">Hidden — tap to show</span>}
           </button>
         </li>
         {(["Alwin BD", "ReturnHex", "Naire"] as const).map((name) => (
@@ -358,6 +370,7 @@ function HomeView({ snapshot, txns, today, go }: ViewCtx) {
             return (
               <Card
                 key={d}
+                className="ring-light"
                 label={d === "lent" ? "Total Money Lent (Receivable)" : "Total Money Borrowed (Payable)"}
                 value={l?.outstanding ?? 0}
                 hint={!l ? "Go online once to load" : l.total === 0 ? (d === "lent" ? "No money lent yet" : "No money borrowed yet") : `${d === "lent" ? "Others owe you" : "You owe others"} · ${d === "lent" ? "lent" : "borrowed"} ${formatTaka(l.total)}, repaid ${formatTaka(l.repaid)}`}

@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { Plus } from "lucide-react";
+import { Plus, Users } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState, Meter, PageHeader, TableSkeleton } from "@/components/common";
 import { Money } from "@/components/money";
@@ -40,7 +40,7 @@ async function People() {
   const user = await requireUser();
   const people = await listPeople(user.id);
   if (people.length === 0) {
-    return <EmptyState title="No people yet" description="Add a family member (e.g. Suraiya) to track monthly allocations and payments." />;
+    return <EmptyState icon={Users} title="No people yet" description="Add a family member (e.g. Suraiya) to track monthly allocations and payments." />;
   }
   return (
     <ul className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">

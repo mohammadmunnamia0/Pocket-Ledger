@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { Plus, TrendingUp } from "lucide-react";
+import { PiggyBank, Plus, TrendingUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState, Meter, PageHeader, StatCard, TableSkeleton } from "@/components/common";
 import { Money } from "@/components/money";
@@ -69,7 +69,7 @@ async function Savings({ searchParams }: { searchParams: PageProps<"/savings">["
       </div>
 
       {goals.length === 0 ? (
-        <EmptyState title="No savings goals yet" description="Start with a Medical Emergency Fund — a reserve for unexpected health costs." />
+        <EmptyState icon={PiggyBank} title="No savings goals yet" description="Start with a Medical Emergency Fund — a reserve for unexpected health costs." />
       ) : (
         <ul className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {goals.map((g) => (

@@ -109,14 +109,15 @@ export function ActiveNav({ onNavigate }: { onNavigate?: () => void }) {
   return <NavList active={usePathname()} onNavigate={onNavigate} />;
 }
 
-export function Brand({ showEmail = false }: { showEmail?: boolean }) {
+/** `compact`: the phone header, where every pixel goes to keeping "PocketLedger" readable. */
+export function Brand({ showEmail = false, compact = false }: { showEmail?: boolean; compact?: boolean }) {
   return (
-    <Link href="/" className="flex min-w-0 items-center gap-2 px-2.5">
-      <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground">
+    <Link href="/" className={cn("flex min-w-0 items-center gap-2", compact ? "px-1" : "px-2.5")}>
+      <span className={cn("grid size-7 shrink-0 place-items-center rounded-lg bg-primary text-primary-foreground", compact && "max-[359px]:hidden")}>
         <HandCoins className="size-4" aria-hidden />
       </span>
       <span className="grid min-w-0 leading-tight">
-        <span className="truncate font-semibold tracking-tight">PocketLedger</span>
+        <span className={cn("truncate font-semibold tracking-tight", compact && "text-[15px]")}>PocketLedger</span>
         {showEmail && (
           <span className="truncate text-[11px] text-muted-foreground" title={`MongoDB database account: ${OWNER_EMAIL}`}>
             <span className="font-medium">DB - </span>

@@ -1,3 +1,4 @@
+import { Wallet } from "lucide-react";
 import { Suspense } from "react";
 import Link from "next/link";
 import type { Metadata } from "next";
@@ -61,7 +62,7 @@ async function IncomeView() {
 
         <Section title="Salary records" help="salaryRecords" description="Used and remaining amounts come from the FIFO funding ledger.">
           {records.length === 0 ? (
-            <EmptyState title="No income recorded yet" description="Add your first salary to start tracking." />
+            <EmptyState icon={Wallet} title="No income recorded yet" description="Add your first salary to start tracking." />
           ) : (
             <ul className="divide-y">
               {records.map((r) => (

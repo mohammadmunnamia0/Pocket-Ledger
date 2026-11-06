@@ -1,6 +1,6 @@
 import { Suspense } from "react";
 import Link from "next/link";
-import { CalendarClock, ChevronRight, Wallet } from "lucide-react";
+import { ArrowLeftRight, BarChart3, CalendarCheck, CalendarClock, ChevronRight, HandCoins, Wallet } from "lucide-react";
 import { ButtonLink } from "@/components/button-link";
 import { CardsSkeleton, EmptyState, Meter, PageHeader, Section, TableSkeleton } from "@/components/common";
 import { Money } from "@/components/money";
@@ -21,7 +21,7 @@ export default function PersonalDashboardPage() {
       <PageHeader
         title="Dashboard"
         help="dashboard"
-        description="Your money at a glance — every figure is calculated from your recorded transactions."
+        description="Your money at a glance."
         actions={
           <ButtonLink href="/income" variant="outline">
             <Wallet /> Add salary
@@ -68,8 +68,9 @@ async function Dashboard() {
         </div>
         {!p ? (
           <EmptyState
+            icon={Wallet}
             title="No salary recorded yet"
-            description="Add your salary to see what you carried forward, what you received, what you spent and what is left."
+            description="Add your salary to see what is left to spend."
             action={<ButtonLink href="/income">Add salary</ButtonLink>}
           />
         ) : (
@@ -126,7 +127,7 @@ async function Dashboard() {
         <h2 id="commitments-title" className="text-sm font-semibold">
           Loans, savings &amp; investments
         </h2>
-        <p className="mb-3 text-xs text-muted-foreground">Kept separate — none of these are part of the Remaining balance or of income and expenses.</p>
+        <p className="mb-3 text-xs text-muted-foreground">Kept separate from your Remaining balance.</p>
         <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
           <LoanTotalCard direction="lent" summary={d.lent} />
           <LoanTotalCard direction="borrowed" summary={d.owed} />
@@ -148,6 +149,48 @@ async function Dashboard() {
         </div>
       </section>
 
+      {/* The most actionable lists come before the salary table and charts. */}
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+        <Section
+          title="Recent transactions"
+          help="transactions"
+          actions={
+            <Link href="/transactions" className="text-xs text-muted-foreground hover:text-foreground">
+              View all
+            </Link>
+          }
+        >
+          {d.recent.length ? <TxnList items={d.recent} /> : <EmptyState icon={ArrowLeftRight} title="No transactions yet" description="Tap Add to record your first expense." />}
+        </Section>
+        <Section title="Upcoming bills & pending payments" help="upcomingBills">
+          {d.upcoming.length === 0 && d.pending.length === 0 ? (
+            <EmptyState icon={CalendarCheck} title="Nothing due" description="Set up recurring bills to get reminders." action={<ButtonLink href="/bills" variant="outline">Utility bills</ButtonLink>} />
+          ) : (
+            <div className="space-y-4">
+              {d.upcoming.length > 0 && (
+                <ul className="divide-y">
+                  {d.upcoming.slice(0, 5).map((b) => (
+                    <li key={`${b.recurringBillId}-${b.billingMonth}`} className="flex items-center gap-3 py-2.5">
+                      <span className="grid size-8 place-items-center rounded-full bg-muted text-muted-foreground">
+                        <CalendarClock className="size-4" aria-hidden />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-medium">{b.title}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {b.daysLeft < 0 ? `Overdue by ${-b.daysLeft} days` : b.daysLeft === 0 ? "Due today" : `Due ${formatDate(b.dueDate)} · ${b.daysLeft} days`}
+                        </p>
+                      </div>
+                      <Money value={b.expectedAmount} className="text-sm" />
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {d.pending.length > 0 && <TxnList items={d.pending} />}
+            </div>
+          )}
+        </Section>
+      </div>
+
       <Section
         title="Each salary"
         help="carryForward"
@@ -159,7 +202,7 @@ async function Dashboard() {
         }
       >
         {s.breakdown.length === 0 ? (
-          <EmptyState title="No salary recorded yet" action={<ButtonLink href="/income">Add salary</ButtonLink>} />
+          <EmptyState icon={Wallet} title="No salary recorded yet" action={<ButtonLink href="/income">Add salary</ButtonLink>} />
         ) : (
           <div className="relative overflow-x-auto">
             <table className="w-full text-sm">
@@ -194,57 +237,16 @@ async function Dashboard() {
 
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Section title="Daily spending" help="charts" description={formatMonthLong(d.month)}>
-          {d.daily.some((x) => x.total > 0) ? <DailySpendChart data={d.daily} /> : <EmptyState title="No expenses yet this month" />}
+          {d.daily.some((x) => x.total > 0) ? <DailySpendChart data={d.daily} /> : <EmptyState icon={BarChart3} title="No expenses yet this month" />}
         </Section>
         <Section title="Spending by category" help="charts" description={formatMonthLong(d.month)}>
-          {d.categories.length ? <CategoryBarChart data={d.categories} /> : <EmptyState title="No categorized spending yet" />}
+          {d.categories.length ? <CategoryBarChart data={d.categories} /> : <EmptyState icon={BarChart3} title="No categorized spending yet" />}
         </Section>
       </div>
 
       <Section title="Income vs. expenses" help="charts" description="Last 6 months">
         <IncomeExpenseChart data={d.series} />
       </Section>
-
-      <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
-        <Section
-          title="Recent transactions"
-          help="transactions"
-          actions={
-            <Link href="/transactions" className="text-xs text-muted-foreground hover:text-foreground">
-              View all
-            </Link>
-          }
-        >
-          {d.recent.length ? <TxnList items={d.recent} /> : <EmptyState title="No transactions yet" description="Use Quick Add to record your first expense." />}
-        </Section>
-        <Section title="Upcoming bills & pending payments" help="upcomingBills">
-          {d.upcoming.length === 0 && d.pending.length === 0 ? (
-            <EmptyState title="Nothing due" description="Set up recurring bills to get reminders." action={<ButtonLink href="/bills" variant="outline">Utility bills</ButtonLink>} />
-          ) : (
-            <div className="space-y-4">
-              {d.upcoming.length > 0 && (
-                <ul className="divide-y">
-                  {d.upcoming.slice(0, 5).map((b) => (
-                    <li key={`${b.recurringBillId}-${b.billingMonth}`} className="flex items-center gap-3 py-2.5">
-                      <span className="grid size-8 place-items-center rounded-full bg-muted text-muted-foreground">
-                        <CalendarClock className="size-4" aria-hidden />
-                      </span>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-medium">{b.title}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {b.daysLeft < 0 ? `Overdue by ${-b.daysLeft} days` : b.daysLeft === 0 ? "Due today" : `Due ${formatDate(b.dueDate)} · ${b.daysLeft} days`}
-                        </p>
-                      </div>
-                      <Money value={b.expectedAmount} className="text-sm" />
-                    </li>
-                  ))}
-                </ul>
-              )}
-              {d.pending.length > 0 && <TxnList items={d.pending} />}
-            </div>
-          )}
-        </Section>
-      </div>
 
       {d.goals.length > 0 && (
         <Section
@@ -259,7 +261,7 @@ async function Dashboard() {
           <ul className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {d.goals.map((g) => (
               <li key={g.id}>
-                <Link href={`/savings/${g.id}`} className="block rounded-lg p-1 hover:bg-muted/50">
+                <Link href={`/savings/${g.id}`} className="card-link block rounded-lg p-1 hover:bg-muted/50">
                   <div className="flex justify-between text-sm">
                     <span className="font-medium">{g.name}</span>
                     <span className="text-muted-foreground">{g.progressPct}%</span>
@@ -278,35 +280,14 @@ async function Dashboard() {
   );
 }
 
-function OverviewCard({
-  label,
-  value,
-  hint,
-  href,
-  highlight = false,
-  className,
-}: {
-  label: string;
-  value: number;
-  hint: string;
-  href: string;
-  highlight?: boolean;
-  className?: string;
-}) {
+function OverviewCard({ label, value, hint, href, className }: { label: string; value: number; hint: string; href: string; className?: string }) {
   return (
-    <Link
-      href={href}
-      className={cn(
-        "group flex flex-col rounded-xl border bg-card p-4 transition-colors hover:border-foreground/20",
-        highlight && "border-primary/40 bg-primary/5 hover:border-primary/60",
-        className,
-      )}
-    >
+    <Link href={href} className={cn("group card-link flex min-w-0 flex-col rounded-xl border bg-card p-4 hover:border-foreground/20", className)}>
       <span className="flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground">
         {label}
         <ChevronRight className="size-3.5 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
       </span>
-      <span className={cn("mt-1 font-semibold tracking-tight", highlight ? "text-3xl" : "text-xl")}>
+      <span className="mt-1 text-xl font-semibold tracking-tight">
         <Money value={value} tone="auto" />
       </span>
       <span className="mt-1 text-xs text-muted-foreground">{hint}</span>
@@ -314,7 +295,10 @@ function OverviewCard({
   );
 }
 
-/** Always shown: what others still owe you (receivable) or what you still owe (payable). Never part of the Remaining balance. */
+/**
+ * Always shown: what others still owe you (receivable) or what you still owe (payable). Never part
+ * of the Remaining balance. A red border with a slowly circling light keeps both in view.
+ */
 function LoanTotalCard({ direction, summary: s, className }: { direction: "lent" | "borrowed"; summary: DashboardData["lent"]; className?: string }) {
   const lent = direction === "lent";
   const people = s.byPerson.slice(0, 2).map((p) => p.person).join(", ");
@@ -325,9 +309,12 @@ function LoanTotalCard({ direction, summary: s, className }: { direction: "lent"
         : "No money borrowed yet"
       : `${lent ? "Lent" : "Borrowed"} ${formatTaka(s.total)} · repaid ${formatTaka(s.repaid)} · ${people || "all repaid"}`;
   return (
-    <Link href="/loans" className={cn("group flex min-w-0 flex-col rounded-xl border bg-card p-4 transition-colors hover:border-foreground/20", className)}>
+    <Link href="/loans" className={cn("group card-link ring-light flex min-w-0 flex-col rounded-xl border bg-card p-4", className)}>
       <span className="flex items-start justify-between gap-2 text-xs font-medium text-muted-foreground">
-        {lent ? "Total Money Lent (Receivable)" : "Total Money Borrowed (Payable)"}
+        <span className="flex items-start gap-1.5">
+          <HandCoins className="mt-px size-3.5 shrink-0 text-critical" aria-hidden />
+          {lent ? "Total Money Lent (Receivable)" : "Total Money Borrowed (Payable)"}
+        </span>
         <ChevronRight className="size-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
       </span>
       <span className="mt-1 text-xl font-semibold tracking-tight tabular">{formatTaka(s.outstanding)}</span>
@@ -344,13 +331,13 @@ function BorrowedCard({ borrowed, className }: { borrowed: DashboardData["borrow
     .filter((p) => p.open.length > 0)
     .map((p) => `${p.name}: ${p.open.slice(0, 2).map((o) => `${formatMonth(o.month).split(" ")[0]} ${formatTaka(o.remaining)}${o.note ? ` (${o.note})` : ""}`).join(" · ")}`);
   return (
-    <Link href="/people" className={cn("group flex flex-col rounded-xl border bg-card p-4 transition-colors hover:border-foreground/20", className)}>
+    <Link href="/people" className={cn("group card-link flex min-w-0 flex-col rounded-xl border bg-card p-4 hover:border-foreground/20", className)}>
       <span className="flex items-center justify-between gap-2 text-xs font-medium text-muted-foreground">
-        Borrowed money
+        Owed to family
         <ChevronRight className="size-3.5 opacity-0 transition-opacity group-hover:opacity-100" aria-hidden />
       </span>
       {borrowed.total === 0 ? (
-        <span className="mt-2 text-xs text-muted-foreground">Nothing owed. Track money you owe in Family &amp; Allocations.</span>
+        <span className="mt-2 text-xs text-muted-foreground">Nothing owed to family.</span>
       ) : (
         <>
           <span className="mt-1 text-xl font-semibold tracking-tight">

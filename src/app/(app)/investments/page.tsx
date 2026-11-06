@@ -61,7 +61,7 @@ async function Investments() {
         }
       >
         {list.length === 0 ? (
-          <EmptyState title="No investments yet" description="Add money you put into a business, shares, a fixed deposit, land or anything else." />
+          <EmptyState icon={TrendingUp} title="No investments yet" description="Add money you put into a business, shares, a fixed deposit, land or anything else." />
         ) : (
           <div className="space-y-4">
             <dl className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">

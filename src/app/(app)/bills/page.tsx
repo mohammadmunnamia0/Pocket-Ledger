@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { CalendarClock, Pencil, Plus, Trash2 } from "lucide-react";
+import { CalendarCheck, CalendarClock, Pencil, Plus, Trash2, Zap } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { EmptyState, PageHeader, Section, StatusBadge, TableSkeleton } from "@/components/common";
 import { Money } from "@/components/money";
@@ -70,7 +70,7 @@ async function Bills() {
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
         <Section title="Upcoming & overdue" help="upcomingBills" description="Recurring bills with nothing recorded for their billing month yet.">
           {upcoming.length === 0 ? (
-            <EmptyState title="All caught up" description={templates.length ? "Every recurring bill is recorded for its month." : "Add recurring bills to get reminders."} />
+            <EmptyState icon={CalendarCheck} title="All caught up" description={templates.length ? "Every recurring bill is recorded for its month." : "Add recurring bills to get reminders."} />
           ) : (
             <ul className="divide-y">
               {upcoming.map((b) => (
@@ -106,7 +106,7 @@ async function Bills() {
 
         <Section title="Recurring bills" help="recurringBills">
           {templates.length === 0 ? (
-            <EmptyState title="No recurring bills" description="E.g. Internet ৳1,000 due on the 10th every month." />
+            <EmptyState icon={Zap} title="No recurring bills" description="E.g. Internet ৳1,000 due on the 10th every month." />
           ) : (
             <ul className="divide-y">
               {templates.map((t) => (

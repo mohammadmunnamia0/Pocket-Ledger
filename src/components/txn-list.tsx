@@ -39,11 +39,13 @@ export function TxnIcon({ type, className }: { type: TxnDTO["type"]; className?:
 
 export function TxnAmount({ t, className }: { t: TxnDTO; className?: string }) {
   const sign = txnSign(t);
+  // Loan money is never income or part of the balance, so it is never shown in the income green.
+  const loan = t.type === "loan_in" || t.type === "loan_out";
   return (
     <Money
       value={sign === 0 ? t.amount : sign * t.amount}
       signed={sign > 0}
-      tone={sign > 0 ? "income" : t.status === "pending" ? "muted" : "default"}
+      tone={loan || t.status === "pending" ? "muted" : sign > 0 ? "income" : "default"}
       className={cn("font-medium", className)}
     />
   );

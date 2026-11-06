@@ -194,3 +194,79 @@
     text-size-adjust: 100%;
   }
 }
+
+/* Tappable dashboard cards: one shared, subtle hover / press feel. */
+@utility card-link {
+  transition-property: border-color, background-color, box-shadow, transform;
+  transition-duration: 150ms;
+  transition-timing-function: ease-out;
+  @media (hover: hover) {
+    &:hover {
+      box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+    }
+  }
+  &:active {
+    transform: scale(0.985);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    &:active {
+      transform: none;
+    }
+  }
+}
+
+/* Private amounts: blurred until tapped, unblurring smoothly. */
+@utility private-amount {
+  filter: blur(6px);
+  user-select: none;
+  pointer-events: none;
+  transition: filter 250ms ease-out;
+}
+
+/*
+ * Receivable / Payable cards: a red border with a soft light that slowly circles it.
+ * The light is a 1px conic-gradient ring masked to the border; with reduced motion it stays still.
+ */
+@property --ring-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+@keyframes ring-light-spin {
+  to {
+    --ring-angle: 360deg;
+  }
+}
+@utility ring-light {
+  position: relative;
+  isolation: isolate;
+  border-color: color-mix(in oklab, var(--critical-mark) 50%, transparent);
+  &::before {
+    content: "";
+    position: absolute;
+    inset: -1px;
+    z-index: -1;
+    border-radius: inherit;
+    padding: 1.5px;
+    background: conic-gradient(
+      from var(--ring-angle),
+      transparent 0deg,
+      var(--critical) 50deg,
+      transparent 110deg,
+      transparent 360deg
+    );
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask-composite: exclude;
+    animation: ring-light-spin 5s linear infinite;
+    pointer-events: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    &::before {
+      animation: none;
+      opacity: 0;
+    }
+  }
+}

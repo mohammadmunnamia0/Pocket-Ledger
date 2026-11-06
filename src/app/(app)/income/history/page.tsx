@@ -1,7 +1,7 @@
 import { Suspense } from "react";
 import Link from "next/link";
 import type { Metadata } from "next";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Wallet } from "lucide-react";
 import { ButtonLink } from "@/components/button-link";
 import { EmptyState, PageHeader, TableSkeleton } from "@/components/common";
 import { Money } from "@/components/money";
@@ -35,7 +35,7 @@ async function History() {
   const user = await requireUser();
   const periods = await getSalaryHistory(user.id);
   if (periods.length === 0) {
-    return <EmptyState title="No salary recorded yet" action={<ButtonLink href="/income">Add salary</ButtonLink>} />;
+    return <EmptyState icon={Wallet} title="No salary recorded yet" action={<ButtonLink href="/income">Add salary</ButtonLink>} />;
   }
 
   return (
